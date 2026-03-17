@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DoerAndroid" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#667685</item>
+        <item name="android:navigationBarColor">#667685</item>
+    </style>
+
+    <style name="Theme.DoerAndroid.Splash" parent="Theme.DoerAndroid">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>

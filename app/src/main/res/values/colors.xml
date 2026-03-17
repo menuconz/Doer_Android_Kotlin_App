@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#667685</color>
+    <color name="primary_dark">#4A5A67</color>
+    <color name="accent">#667685</color>
+    <color name="splash_background">#667685</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="status_created">#FFA500</color>
+    <color name="status_accepted">#2196F3</color>
+    <color name="status_ongoing">#4CAF50</color>
+    <color name="status_completed">#8BC34A</color>
+    <color name="status_not_completed">#F44336</color>
+    <color name="status_default">#8E8E93</color>
+</resources>
