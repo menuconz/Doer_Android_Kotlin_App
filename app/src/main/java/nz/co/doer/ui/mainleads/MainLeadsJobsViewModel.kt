@@ -159,6 +159,23 @@ class MainLeadsJobsViewModel @Inject constructor(
     private val pageSize: Int = 20
     private var addressSearchJob: Job? = null
 
+    // ──────────────── Resume refresh guard ────────────────
+    // Prevents a double-load on first launch (init already calls loadJobs).
+    private var isFirstResume = true
+
+    /**
+     * Call this from the screen's ON_RESUME lifecycle event.
+     * Refreshes job statuses silently when the user returns from another screen
+     * (e.g. after a contractor marks a job as Started/Ended in ShiftDetails).
+     */
+    fun refreshOnResume() {
+        if (isFirstResume) {
+            isFirstResume = false
+            return
+        }
+        loadJobs()
+    }
+
     init {
         viewModelScope.launch {
             val isManager = preferencesManager.isManager.first()

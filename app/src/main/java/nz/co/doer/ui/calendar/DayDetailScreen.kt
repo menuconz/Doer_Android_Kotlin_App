@@ -44,6 +44,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +65,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import nz.co.doer.data.remote.dto.ShiftDto
 import nz.co.doer.data.remote.dto.ShiftSubItemDto
 import java.time.Instant
@@ -91,6 +95,18 @@ fun DayDetailScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    // ── Refresh on resume so status changes made in ShiftDetails are reflected immediately ──
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshOnResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Show active dialog
@@ -239,9 +255,6 @@ fun DayDetailScreen(
                     Text("No projects for this day", color = Color.Gray, fontSize = 16.sp)
                 }
             } else {
-                // Horizontally + vertically scrollable data grid
-                // Use both horizontal and vertical scroll on a single Column
-                // (like MAUI's ScrollView Orientation="Both")
                 val hScroll = rememberScrollState()
                 val vScroll = rememberScrollState()
                 Column(
@@ -251,14 +264,11 @@ fun DayDetailScreen(
                         .horizontalScroll(hScroll)
                         .verticalScroll(vScroll)
                 ) {
-                    // Header Row
                     DataGridHeaderRow(
                         isOwner = state.isOwner,
                         onSort = viewModel::sortBy,
                         getSortIcon = viewModel::getSortIcon
                     )
-
-                    // Data Rows
                     state.shiftRows.forEach { row ->
                         DataGridShiftRow(
                             row = row,
@@ -295,25 +305,18 @@ private fun FilterSection(state: DayDetailUiState, viewModel: DayDetailViewModel
             .background(Color(0xFFF8F9FA))
             .padding(15.dp, 10.dp)
     ) {
-        // Filter header
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Advanced Filters", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF333333))
-            }
+            Text("Advanced Filters", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF333333))
             Text(state.filterStatusText, fontSize = 13.sp, color = Color(0xFF666666))
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Action buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (state.pendingFilters.any { it.isComplete }) {
                 Button(
                     onClick = viewModel::applyFilters,
@@ -334,12 +337,10 @@ private fun FilterSection(state: DayDetailUiState, viewModel: DayDetailViewModel
             ) { Text("+ Add Filter", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
         }
 
-        // Pending filters
         state.pendingFilters.forEach { filter ->
             PendingFilterRow(filter = filter, columns = state.filterColumns, viewModel = viewModel)
         }
 
-        // Active filters
         if (state.activeFilters.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text("Currently Applied Filters:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF28A745))
@@ -352,10 +353,8 @@ private fun FilterSection(state: DayDetailUiState, viewModel: DayDetailViewModel
         if (state.pendingFilters.isEmpty() && state.activeFilters.isEmpty()) {
             Text(
                 "No filters applied - showing all projects",
-                fontSize = 12.sp,
-                color = Color(0xFF9CA3AF),
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
+                fontSize = 12.sp, color = Color(0xFF9CA3AF),
+                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
             )
         }
     }
@@ -379,7 +378,6 @@ private fun PendingFilterRow(filter: FilterRow, columns: List<FilterColumnOption
     ) {
         Text("Where", fontSize = 12.sp, color = Color(0xFF333333))
 
-        // Column picker
         Box {
             Text(
                 text = filter.selectedColumn?.displayName ?: "Column",
@@ -389,8 +387,7 @@ private fun PendingFilterRow(filter: FilterRow, columns: List<FilterColumnOption
                     .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
                     .padding(8.dp, 4.dp)
                     .width(100.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             androidx.compose.material3.DropdownMenu(
                 expanded = expandedColumn,
@@ -399,16 +396,12 @@ private fun PendingFilterRow(filter: FilterRow, columns: List<FilterColumnOption
                 columns.forEach { col ->
                     androidx.compose.material3.DropdownMenuItem(
                         text = { Text(col.displayName, fontSize = 13.sp) },
-                        onClick = {
-                            viewModel.updatePendingFilterColumn(filter.id, col)
-                            expandedColumn = false
-                        }
+                        onClick = { viewModel.updatePendingFilterColumn(filter.id, col); expandedColumn = false }
                     )
                 }
             }
         }
 
-        // Condition picker
         Box {
             Text(
                 text = filter.selectedCondition.ifBlank { "Condition" },
@@ -418,8 +411,7 @@ private fun PendingFilterRow(filter: FilterRow, columns: List<FilterColumnOption
                     .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
                     .padding(8.dp, 4.dp)
                     .width(90.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             androidx.compose.material3.DropdownMenu(
                 expanded = expandedCondition,
@@ -428,16 +420,12 @@ private fun PendingFilterRow(filter: FilterRow, columns: List<FilterColumnOption
                 filter.availableConditions.forEach { cond ->
                     androidx.compose.material3.DropdownMenuItem(
                         text = { Text(cond, fontSize = 13.sp) },
-                        onClick = {
-                            viewModel.updatePendingFilterCondition(filter.id, cond)
-                            expandedCondition = false
-                        }
+                        onClick = { viewModel.updatePendingFilterCondition(filter.id, cond); expandedCondition = false }
                     )
                 }
             }
         }
 
-        // Value
         OutlinedTextField(
             value = filter.value,
             onValueChange = { viewModel.updatePendingFilterValue(filter.id, it) },
@@ -447,12 +435,8 @@ private fun PendingFilterRow(filter: FilterRow, columns: List<FilterColumnOption
             singleLine = true
         )
 
-        // Remove
         Text(
-            "X",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.Red,
+            "X", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Red,
             modifier = Modifier.clickable { viewModel.removeFilter(filter.id) }
         )
     }
@@ -471,17 +455,17 @@ private fun ActiveFilterChip(filter: FilterRow, onRemove: () -> Unit) {
     ) {
         Text(
             "${filter.selectedColumn?.displayName ?: ""} ${filter.selectedCondition} ${filter.value}",
-            fontSize = 12.sp,
-            color = Color(0xFF155724)
+            fontSize = 12.sp, color = Color(0xFF155724)
         )
-        Text("X", fontSize = 9.sp, color = Color(0xFFDC3545), fontWeight = FontWeight.Bold,
-            modifier = Modifier.clickable(onClick = onRemove))
+        Text(
+            "X", fontSize = 9.sp, color = Color(0xFFDC3545), fontWeight = FontWeight.Bold,
+            modifier = Modifier.clickable(onClick = onRemove)
+        )
     }
 }
 
 // ===== Data Grid =====
 
-// Column widths matching MAUI
 private object ColW {
     val expand = 40.dp
     val projectName = 180.dp
@@ -499,7 +483,6 @@ private object ColW {
     val status = 180.dp
     val files = 100.dp
     val actions = 225.dp
-    // Sub-item columns
     val subItem = 200.dp
     val subHs = 140.dp
     val subStatus = 120.dp
@@ -515,11 +498,7 @@ private fun DataGridHeaderRow(
     onSort: (String) -> Unit,
     getSortIcon: (String) -> String
 ) {
-    Row(
-        modifier = Modifier
-            .background(Color(0xFFEEEEEE))
-            .height(40.dp)
-    ) {
+    Row(modifier = Modifier.background(Color(0xFFEEEEEE)).height(40.dp)) {
         HeaderCell("", ColW.expand, sortable = false)
         SortableHeaderCell("Project Name", ColW.projectName, "ProjectName", onSort, getSortIcon)
         SortableHeaderCell("Client Name", ColW.clientName, "ClientName", onSort, getSortIcon)
@@ -545,8 +524,7 @@ private fun DataGridHeaderRow(
 private fun HeaderCell(text: String, width: Dp, sortable: Boolean = true) {
     Box(
         modifier = Modifier
-            .width(width)
-            .height(40.dp)
+            .width(width).height(40.dp)
             .border(0.5.dp, Color.Gray)
             .padding(5.dp),
         contentAlignment = Alignment.CenterStart
@@ -562,19 +540,18 @@ private fun SortableHeaderCell(
 ) {
     Row(
         modifier = Modifier
-            .width(width)
-            .height(40.dp)
+            .width(width).height(40.dp)
             .border(0.5.dp, Color.Gray)
             .clickable { onSort(sortKey) }
             .padding(5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(
+            text, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+        )
         val icon = getSortIcon(sortKey)
-        if (icon.isNotBlank()) {
-            Text(icon, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
+        if (icon.isNotBlank()) Text(icon, fontWeight = FontWeight.Bold, fontSize = 14.sp)
     }
 }
 
@@ -595,13 +572,11 @@ private fun DataGridShiftRow(
     onOpenMap: (ShiftDto) -> Unit
 ) {
     Column {
-        // Main row
         Row(modifier = Modifier.height(55.dp)) {
             // Expand/Collapse
             Box(
                 modifier = Modifier
-                    .width(ColW.expand)
-                    .height(55.dp)
+                    .width(ColW.expand).height(55.dp)
                     .border(0.5.dp, Color.LightGray)
                     .clickable { viewModel.toggleExpand(row.shift.id) },
                 contentAlignment = Alignment.Center
@@ -609,85 +584,66 @@ private fun DataGridShiftRow(
                 Text(if (row.isExpanded) "▼" else "▶", fontSize = 16.sp, color = Color(0xFF666666))
             }
 
-            // Project Name (clickable to edit) + 💬 message icon
+            // Project Name + message icon
             Row(
                 modifier = Modifier
-                    .width(ColW.projectName)
-                    .height(55.dp)
+                    .width(ColW.projectName).height(55.dp)
                     .border(0.5.dp, Color.LightGray)
                     .clickable { viewModel.editProjectName(row.shift.id) }
                     .padding(8.dp, 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(row.shift.projectName.ifBlank { "—" }, fontSize = 14.sp, color = Color(0xFF374151),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(
+                    row.shift.projectName.ifBlank { "—" }, fontSize = 14.sp, color = Color(0xFF374151),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                )
                 Text("💬", fontSize = 14.sp, modifier = Modifier.clickable { onViewMessages() }.padding(start = 4.dp))
             }
 
-            // Client Name (clickable to select)
+            // Client Name
             Box(
                 modifier = Modifier
-                    .width(ColW.clientName)
-                    .height(55.dp)
+                    .width(ColW.clientName).height(55.dp)
                     .border(0.5.dp, Color.LightGray)
                     .clickable { viewModel.openClientSelect(row.shift.id) }
                     .padding(8.dp, 4.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
-                Text(row.shift.clientName?.ifBlank { "—" } ?: "—", fontSize = 14.sp, color = Color(0xFF374151),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    row.shift.clientName?.ifBlank { "—" } ?: "—", fontSize = 14.sp,
+                    color = Color(0xFF374151), maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
             }
 
-            // Address (clickable to edit + map icon)
+            // Address + map icon
             Row(
                 modifier = Modifier
-                    .width(ColW.address)
-                    .height(55.dp)
+                    .width(ColW.address).height(55.dp)
                     .border(0.5.dp, Color.LightGray)
                     .clickable { viewModel.editAddress(row.shift.id) }
                     .padding(8.dp, 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(row.shift.address.ifBlank { "—" }, fontSize = 14.sp, color = Color(0xFF374151),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(
+                    row.shift.address.ifBlank { "—" }, fontSize = 14.sp, color = Color(0xFF374151),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                )
                 if (row.shift.latitude != null && row.shift.longitude != null) {
-                    Text("📍", fontSize = 16.sp, color = Color(0xFF007AFF),
-                        modifier = Modifier.clickable { onOpenMap(row.shift) }.padding(start = 5.dp))
+                    Text(
+                        "📍", fontSize = 16.sp, color = Color(0xFF007AFF),
+                        modifier = Modifier.clickable { onOpenMap(row.shift) }.padding(start = 5.dp)
+                    )
                 }
             }
 
-            // Duration From (clickable to edit)
             DataCellClickable(row.durationFromFormatted, ColW.durationFrom) { viewModel.editDurationFrom(row.shift.id) }
-
-            // Duration To (clickable to edit)
             DataCellClickable(row.durationToFormatted, ColW.durationTo) { viewModel.editDurationTo(row.shift.id) }
+            ColoredCellClickable(row.contractTypeText, Color(row.contractTypeColor), ColW.contractType) { viewModel.openContractType(row.shift.id) }
+            ColoredCellClickable(row.invoiceStatusText, Color(row.invoiceStatusColor), ColW.invoiceStatus) { viewModel.openInvoiceStatus(row.shift.id) }
+            ColoredCellClickable(row.hsFormText, Color(row.hsFormColor), ColW.hsForm) { viewModel.openHSFormStatus(row.shift.id) }
+            DataCellClickable(row.shift.finalMeasure.ifBlank { "—" }, ColW.finalMeasure) { viewModel.editFinalMeasure(row.shift.id) }
+            DataCellClickable(row.shift.instructions.ifBlank { "—" }, ColW.jobDescription) { viewModel.editJobDescription(row.shift.id) }
 
-            // Contract Type (colored, clickable)
-            ColoredCellClickable(row.contractTypeText, Color(row.contractTypeColor), ColW.contractType) {
-                viewModel.openContractType(row.shift.id)
-            }
-
-            // Invoice Status (colored, clickable)
-            ColoredCellClickable(row.invoiceStatusText, Color(row.invoiceStatusColor), ColW.invoiceStatus) {
-                viewModel.openInvoiceStatus(row.shift.id)
-            }
-
-            // H&S Status (colored, clickable)
-            ColoredCellClickable(row.hsFormText, Color(row.hsFormColor), ColW.hsForm) {
-                viewModel.openHSFormStatus(row.shift.id)
-            }
-
-            // Final Measure (clickable to edit)
-            DataCellClickable(row.shift.finalMeasure.ifBlank { "—" }, ColW.finalMeasure) {
-                viewModel.editFinalMeasure(row.shift.id)
-            }
-
-            // Job Description (clickable to edit)
-            DataCellClickable(row.shift.instructions.ifBlank { "—" }, ColW.jobDescription) {
-                viewModel.editJobDescription(row.shift.id)
-            }
-
-            // Quote (owner only)
             if (isOwner) {
                 DataCell(
                     if (row.shift.amount != null) "$${String.format("%.2f", row.shift.amount)}" else "",
@@ -695,13 +651,11 @@ private fun DataGridShiftRow(
                 )
             }
 
-            // Contractor Quote
             DataCell(
                 if (row.shift.acceptedQuoteAmount != null) "$${String.format("%.2f", row.shift.acceptedQuoteAmount)}" else "",
                 ColW.contractorQuote
             )
 
-            // Status (colored, read-only)
             ColoredCell(row.statusMessage, Color(row.statusColor), ColW.status)
 
             // Files
@@ -732,7 +686,6 @@ private fun DataGridShiftRow(
             }
         }
 
-        // Sub-items section (expanded)
         if (row.isExpanded) {
             SubItemsSection(
                 row = row,
@@ -756,7 +709,6 @@ private fun SubItemsSection(
     onViewSubItemFiles: (Int) -> Unit
 ) {
     Column(modifier = Modifier.padding(start = 40.dp)) {
-        // Sub-items header
         Row(modifier = Modifier.background(Color(0xFFEEEEEE)).height(45.dp)) {
             SubHeaderCell("🔧 Sub Item", ColW.subItem)
             SubHeaderCell("🛡️ H&S Status", ColW.subHs)
@@ -764,12 +716,9 @@ private fun SubItemsSection(
             SubHeaderCell("🚀 Date Started", ColW.subDateStarted)
             SubHeaderCell("✅ Completed", ColW.subDateCompleted)
             SubHeaderCell("📁 Files", ColW.subFiles)
-            if (isOwner) {
-                SubHeaderCell("🗑️ Delete", ColW.subDelete)
-            }
+            if (isOwner) SubHeaderCell("🗑️ Delete", ColW.subDelete)
         }
 
-        // Sub-item rows
         row.subItems.forEach { subItem ->
             SubItemRow(
                 subItem = subItem,
@@ -781,13 +730,8 @@ private fun SubItemsSection(
             )
         }
 
-        // Add sub-item row
         if (isOwner) {
-            AddSubItemRow(
-                shiftId = row.shift.id,
-                newName = row.newSubItemName,
-                viewModel = viewModel
-            )
+            AddSubItemRow(shiftId = row.shift.id, newName = row.newSubItemName, viewModel = viewModel)
         }
     }
 }
@@ -796,8 +740,7 @@ private fun SubItemsSection(
 private fun SubHeaderCell(text: String, width: Dp) {
     Box(
         modifier = Modifier
-            .width(width)
-            .height(45.dp)
+            .width(width).height(45.dp)
             .border(0.5.dp, Color.Gray)
             .padding(10.dp, 0.dp),
         contentAlignment = Alignment.CenterStart
@@ -821,24 +764,23 @@ private fun SubItemRow(
     val statusText = DayDetailViewModel.getSubItemStatusText(subItem.status)
 
     Row(modifier = Modifier.height(65.dp)) {
-        // Sub-item name + 💬 message icon
         Row(
             modifier = Modifier
-                .width(ColW.subItem)
-                .height(65.dp)
+                .width(ColW.subItem).height(65.dp)
                 .border(0.5.dp, Color.LightGray)
                 .padding(15.dp, 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(subItem.subitem, fontSize = 15.sp, color = Color(0xFF374151), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(
+                subItem.subitem, fontSize = 15.sp, color = Color(0xFF374151),
+                maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+            )
             Text("💬", fontSize = 14.sp, modifier = Modifier.clickable { onViewMessages() }.padding(start = 4.dp))
         }
 
-        // H&S Required (colored, clickable)
         Box(
             modifier = Modifier
-                .width(ColW.subHs)
-                .height(65.dp)
+                .width(ColW.subHs).height(65.dp)
                 .border(0.5.dp, Color.LightGray)
                 .background(Color(hsColor))
                 .clickable { viewModel.openSubItemHS(shiftId, subItem.id) }
@@ -848,11 +790,9 @@ private fun SubItemRow(
             Text(hsText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
-        // Status (colored, clickable)
         Box(
             modifier = Modifier
-                .width(ColW.subStatus)
-                .height(65.dp)
+                .width(ColW.subStatus).height(65.dp)
                 .border(0.5.dp, Color.LightGray)
                 .background(Color(statusColor))
                 .clickable { viewModel.openSubItemStatus(shiftId, subItem.id) }
@@ -862,11 +802,9 @@ private fun SubItemRow(
             Text(statusText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
-        // Date Started (clickable)
         Box(
             modifier = Modifier
-                .width(ColW.subDateStarted)
-                .height(65.dp)
+                .width(ColW.subDateStarted).height(65.dp)
                 .border(0.5.dp, Color(0xFFE5E7EB))
                 .clickable { viewModel.openSubItemDateStarted(shiftId, subItem.id) }
                 .padding(10.dp, 8.dp),
@@ -878,11 +816,9 @@ private fun SubItemRow(
             )
         }
 
-        // Date Completed (read-only)
         Box(
             modifier = Modifier
-                .width(ColW.subDateCompleted)
-                .height(65.dp)
+                .width(ColW.subDateCompleted).height(65.dp)
                 .border(0.5.dp, Color(0xFFE5E7EB))
                 .padding(10.dp, 8.dp),
             contentAlignment = Alignment.CenterStart
@@ -893,47 +829,37 @@ private fun SubItemRow(
             )
         }
 
-        // Files
         Box(
             modifier = Modifier
-                .width(ColW.subFiles)
-                .height(65.dp)
+                .width(ColW.subFiles).height(65.dp)
                 .border(0.5.dp, Color(0xFFE5E7EB)),
             contentAlignment = Alignment.Center
         ) {
-            OutlinedButton(onClick = onViewFiles) {
-                Text("🔗", fontSize = 10.sp)
-            }
+            OutlinedButton(onClick = onViewFiles) { Text("🔗", fontSize = 10.sp) }
         }
 
-        // Delete
         if (isOwner) {
             Box(
                 modifier = Modifier
-                    .width(ColW.subDelete)
-                    .height(65.dp)
+                    .width(ColW.subDelete).height(65.dp)
                     .border(0.5.dp, Color(0xFFE5E7EB)),
                 contentAlignment = Alignment.Center
             ) {
-                Text("🗑️", fontSize = 16.sp,
-                    modifier = Modifier.clickable { viewModel.confirmDeleteSubItem(shiftId, subItem.id) })
+                Text(
+                    "🗑️", fontSize = 16.sp,
+                    modifier = Modifier.clickable { viewModel.confirmDeleteSubItem(shiftId, subItem.id) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun AddSubItemRow(
-    shiftId: Int,
-    newName: String,
-    viewModel: DayDetailViewModel
-) {
+private fun AddSubItemRow(shiftId: Int, newName: String, viewModel: DayDetailViewModel) {
     Row(modifier = Modifier.height(50.dp)) {
-        // Sub-item name entry + Add button
         Row(
             modifier = Modifier
-                .width(ColW.subItem)
-                .height(50.dp)
+                .width(ColW.subItem).height(50.dp)
                 .border(2.dp, Color(0xFF28A745))
                 .background(Color(0xFFF0F8FF))
                 .padding(5.dp),
@@ -958,12 +884,10 @@ private fun AddSubItemRow(
             }
         }
 
-        // Empty placeholder cells
         listOf(ColW.subHs, ColW.subStatus, ColW.subDateStarted, ColW.subDateCompleted, ColW.subFiles, ColW.subDelete).forEach { w ->
             Box(
                 modifier = Modifier
-                    .width(w)
-                    .height(50.dp)
+                    .width(w).height(50.dp)
                     .border(2.dp, Color(0xFF28A745))
                     .background(Color(0xFFF0F8FF))
             )
@@ -977,8 +901,7 @@ private fun AddSubItemRow(
 private fun DataCell(text: String, width: Dp) {
     Box(
         modifier = Modifier
-            .width(width)
-            .height(55.dp)
+            .width(width).height(55.dp)
             .border(0.5.dp, Color.LightGray)
             .padding(8.dp, 4.dp),
         contentAlignment = Alignment.CenterStart
@@ -991,8 +914,7 @@ private fun DataCell(text: String, width: Dp) {
 private fun DataCellClickable(text: String, width: Dp, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .width(width)
-            .height(55.dp)
+            .width(width).height(55.dp)
             .border(0.5.dp, Color.LightGray)
             .clickable(onClick = onClick)
             .padding(8.dp, 4.dp),
@@ -1006,15 +928,16 @@ private fun DataCellClickable(text: String, width: Dp, onClick: () -> Unit) {
 private fun ColoredCell(text: String, bgColor: Color, width: Dp) {
     Box(
         modifier = Modifier
-            .width(width)
-            .height(55.dp)
+            .width(width).height(55.dp)
             .border(0.5.dp, Color.LightGray)
             .background(bgColor)
             .padding(8.dp, 4.dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        Text(text, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            text, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1022,16 +945,17 @@ private fun ColoredCell(text: String, bgColor: Color, width: Dp) {
 private fun ColoredCellClickable(text: String, bgColor: Color, width: Dp, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .width(width)
-            .height(55.dp)
+            .width(width).height(55.dp)
             .border(0.5.dp, Color.LightGray)
             .background(bgColor)
             .clickable(onClick = onClick)
             .padding(8.dp, 4.dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        Text(text, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            text, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1039,39 +963,28 @@ private fun ColoredCellClickable(text: String, bgColor: Color, width: Dp, onClic
 
 @Composable
 private fun EditorDialog(
-    title: String,
-    text: String,
-    onTextChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onDismiss: () -> Unit
+    title: String, text: String,
+    onTextChange: (String) -> Unit, onSave: () -> Unit, onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             OutlinedTextField(
-                value = text,
-                onValueChange = onTextChange,
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 5
+                value = text, onValueChange = onTextChange,
+                modifier = Modifier.fillMaxWidth(), maxLines = 5
             )
         },
-        confirmButton = {
-            TextButton(onClick = onSave) { Text("Save", color = Color(0xFF007AFF)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onSave) { Text("Save", color = Color(0xFF007AFF)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DateTimeDialog(
-    date: LocalDate,
-    time: LocalTime,
-    onSave: (LocalDate, LocalTime) -> Unit,
-    onDismiss: () -> Unit
+    date: LocalDate, time: LocalTime,
+    onSave: (LocalDate, LocalTime) -> Unit, onDismiss: () -> Unit
 ) {
     var showDatePicker by remember { mutableStateOf(true) }
     var selectedDate by remember { mutableStateOf(date) }
@@ -1091,16 +1004,13 @@ private fun DateTimeDialog(
                     showDatePicker = false
                 }) { Text("Next") }
             },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
         ) {
             DatePicker(state = datePickerState)
         }
     } else {
         val timePickerState = rememberTimePickerState(
-            initialHour = selectedTime.hour,
-            initialMinute = selectedTime.minute
+            initialHour = selectedTime.hour, initialMinute = selectedTime.minute
         )
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -1112,9 +1022,7 @@ private fun DateTimeDialog(
                     onSave(selectedDate, selectedTime)
                 }) { Text("Save") }
             },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
         )
     }
 }
@@ -1133,23 +1041,16 @@ private fun AddressSearchDialog(
         text = {
             Column {
                 OutlinedTextField(
-                    value = searchText,
-                    onValueChange = onSearchChange,
+                    value = searchText, onValueChange = onSearchChange,
                     placeholder = { Text("Type to search...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     suggestions.forEach { prediction ->
                         Text(
-                            prediction.description,
-                            fontSize = 14.sp,
-                            color = Color(0xFF333333),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onPlaceSelected(prediction) }
-                                .padding(8.dp)
+                            prediction.description, fontSize = 14.sp, color = Color(0xFF333333),
+                            modifier = Modifier.fillMaxWidth().clickable { onPlaceSelected(prediction) }.padding(8.dp)
                         )
                         HorizontalDivider()
                     }
@@ -1157,9 +1058,7 @@ private fun AddressSearchDialog(
             }
         },
         confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -1186,8 +1085,7 @@ private fun OptionListDialog(
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(20.dp)
-                                .height(20.dp)
+                                .width(20.dp).height(20.dp)
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(Color(color))
                         )
@@ -1198,8 +1096,6 @@ private fun OptionListDialog(
             }
         },
         confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
