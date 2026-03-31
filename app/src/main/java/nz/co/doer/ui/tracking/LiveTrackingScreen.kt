@@ -2,6 +2,7 @@ package nz.co.doer.ui.tracking
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
@@ -62,6 +63,7 @@ import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import nz.co.doer.data.remote.dto.DoerTrackingState
 
@@ -72,7 +74,7 @@ private val BgColor = Color(0xFFF8F9FA)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveTrackingScreen(
-    onBack: () -> Unit,
+    onOpenDrawer: () -> Unit,
     viewModel: LiveTrackingViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -109,8 +111,8 @@ fun LiveTrackingScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+                    IconButton(onClick = onOpenDrawer) {
+                        Icon(Icons.Default.Menu, "Menu", tint = Color.White)
                     }
                 },
                 actions = {
@@ -154,7 +156,7 @@ fun LiveTrackingScreen(
                         .fillMaxWidth()
                         .weight(0.45f)
                 ) {
-                    DoerMap(doers = state.activeDoers)
+                    DoerMap(doers = state.activeDoers, routePoints = state.selectedDoerRoute)
 
                     // Polling indicator
                     if (state.isPolling) {
@@ -237,7 +239,17 @@ fun LiveTrackingScreen(
                                 items = state.activeDoers,
                                 key = { it.userId }
                             ) { doer ->
-                                DoerCard(doer = doer)
+                                DoerCard(
+                                    doer = doer,
+                                    isSelected = state.selectedDoerUserId == doer.userId,
+                                    onClick = {
+                                        if (state.selectedDoerUserId == doer.userId) {
+                                            viewModel.clearSelectedDoer()
+                                        } else {
+                                            viewModel.selectDoer(doer)
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
@@ -292,7 +304,7 @@ private fun StatChip(label: String, count: Int, color: Color) {
 }
 
 @Composable
-private fun DoerMap(doers: List<ActiveDoerUi>) {
+private fun DoerMap(doers: List<ActiveDoerUi>, routePoints: List<LatLng> = emptyList()) {
     // Default to New Zealand center
     val defaultPosition = LatLng(-36.8485, 174.7633) // Auckland
     val cameraPositionState = rememberCameraPositionState {
@@ -332,16 +344,29 @@ private fun DoerMap(doers: List<ActiveDoerUi>) {
             mapToolbarEnabled = false
         )
     ) {
+        // Draw route polyline for selected Doer
+        if (routePoints.isNotEmpty()) {
+            Polyline(
+                points = routePoints,
+                color = Color(0xFF4285F4),
+                width = 12f
+            )
+        }
+
         doers.filter { it.latitude != 0.0 && it.longitude != 0.0 }.forEach { doer ->
             val hue = when (doer.trackingState) {
-                DoerTrackingState.EN_ROUTE -> BitmapDescriptorFactory.HUE_BLUE
+                DoerTrackingState.EN_ROUTE -> BitmapDescriptorFactory.HUE_ORANGE
                 DoerTrackingState.ARRIVED -> BitmapDescriptorFactory.HUE_GREEN
                 DoerTrackingState.ON_SITE -> BitmapDescriptorFactory.HUE_GREEN
                 DoerTrackingState.LEAVING -> BitmapDescriptorFactory.HUE_YELLOW
-                DoerTrackingState.CLOCKED_IN -> BitmapDescriptorFactory.HUE_AZURE
+                DoerTrackingState.CLOCKED_IN -> BitmapDescriptorFactory.HUE_BLUE
                 else -> BitmapDescriptorFactory.HUE_RED
             }
 
+            val markerTitle = buildString {
+                append(doer.displayName.ifBlank { "Doer ${doer.userId.take(6)}" })
+                if (doer.projectName.isNotBlank()) append(" - ${doer.projectName}")
+            }
             val snippet = buildString {
                 append(doer.statusLabel)
                 if (doer.timeOnSite.isNotBlank()) append(" | ${doer.timeOnSite}")
@@ -350,7 +375,7 @@ private fun DoerMap(doers: List<ActiveDoerUi>) {
 
             Marker(
                 state = MarkerState(position = LatLng(doer.latitude, doer.longitude)),
-                title = doer.displayName.ifBlank { "Doer ${doer.userId.take(6)}" },
+                title = markerTitle,
                 snippet = snippet,
                 icon = BitmapDescriptorFactory.defaultMarker(hue)
             )
@@ -359,7 +384,7 @@ private fun DoerMap(doers: List<ActiveDoerUi>) {
 }
 
 @Composable
-private fun DoerCard(doer: ActiveDoerUi) {
+private fun DoerCard(doer: ActiveDoerUi, isSelected: Boolean = false, onClick: () -> Unit = {}) {
     val statusColor by animateColorAsState(
         targetValue = Color(doer.markerColor),
         label = "statusColor"
@@ -367,8 +392,11 @@ private fun DoerCard(doer: ActiveDoerUi) {
 
     Card(
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) Color(0xFFE3F2FD) else Color.White
+        ),
+        modifier = Modifier.clickable { onClick() }
     ) {
         Row(
             modifier = Modifier
@@ -410,22 +438,29 @@ private fun DoerCard(doer: ActiveDoerUi) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (doer.siteName.isNotBlank()) {
+                    if (doer.projectName.isNotBlank()) {
                         Text(
-                            text = doer.siteName,
+                            text = doer.projectName,
                             fontSize = 12.sp,
                             color = Gray500,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        Text("\u2022", fontSize = 10.sp, color = Gray500)
                     }
-                    Text(
-                        text = "Shift #${doer.shiftId}",
-                        fontSize = 12.sp,
-                        color = Gray500
-                    )
+                    if (doer.siteName.isNotBlank()) {
+                        if (doer.projectName.isNotBlank()) {
+                            Text("\u2022", fontSize = 10.sp, color = Gray500)
+                        }
+                        Text(
+                            text = doer.siteName,
+                            fontSize = 11.sp,
+                            color = Gray500,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
                 }
 
                 // ETA row for en-route doers

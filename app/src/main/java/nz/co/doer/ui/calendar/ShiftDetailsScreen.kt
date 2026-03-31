@@ -1,7 +1,9 @@
 package nz.co.doer.ui.calendar
 
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
@@ -1221,23 +1223,26 @@ private fun ClockInOutSection(
                 // Clock In button
                 Button(
                     onClick = {
-                        try {
-                            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                                if (location != null) {
-                                    onClockIn(location.latitude, location.longitude)
-                                } else {
-                                    onClockIn(0.0, 0.0)
-                                }
-                            }.addOnFailureListener {
-                                onClockIn(0.0, 0.0)
-                            }
-                        } catch (_: SecurityException) {
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (!hasPermission) {
                             locationPermissionLauncher.launch(
                                 arrayOf(
                                     Manifest.permission.ACCESS_FINE_LOCATION,
                                     Manifest.permission.ACCESS_COARSE_LOCATION
                                 )
                             )
+                            return@Button
+                        }
+                        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                            if (location != null) {
+                                onClockIn(location.latitude, location.longitude)
+                            } else {
+                                onClockIn(0.0, 0.0)
+                            }
+                        }.addOnFailureListener {
+                            onClockIn(0.0, 0.0)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C875)),

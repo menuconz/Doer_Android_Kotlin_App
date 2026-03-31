@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.local.SecureStorageManager
 import nz.co.doer.data.repository.ShiftRepository
+import nz.co.doer.service.TrackingManager
 import nz.co.doer.ui.theme.DoerTheme
 import timber.log.Timber
 import javax.inject.Inject
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var secureStorageManager: SecureStorageManager
     @Inject lateinit var preferencesManager: PreferencesManager
     @Inject lateinit var shiftRepository: ShiftRepository
+    @Inject lateinit var trackingManager: TrackingManager
 
     // Matching MAUI: NotificationTapped navigates to NotificationView
     // Exposed as StateFlow so DoerNavHost can observe and navigate
@@ -55,6 +57,7 @@ class MainActivity : ComponentActivity() {
                     secureStorageManager = secureStorageManager,
                     preferencesManager = preferencesManager,
                     shiftRepository = shiftRepository,
+                    trackingManager = trackingManager,
                     activity = this
                 )
             }

@@ -91,6 +91,8 @@ data class TrackingStatusDto(
     @SerialName("displayName") val displayName: String = "",
     @SerialName("projectName") val projectName: String = "",
     @SerialName("siteName") val siteName: String = "",
+    @SerialName("siteLatitude") val siteLatitude: Double? = null,
+    @SerialName("siteLongitude") val siteLongitude: Double? = null,
     // EntityBase fields
     @SerialName("lId") val lId: Int = 0,
     @SerialName("siteId") val siteId: Int = 1,

@@ -820,7 +820,9 @@ private fun SubItemRow(
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
-                subItem.dateStartedString.ifBlank { "Not Started" },
+                subItem.dateStartedString.ifBlank {
+                    formatSubItemDate(subItem.dateStarted) ?: "Not Started"
+                },
                 fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF374151)
             )
         }
@@ -833,7 +835,9 @@ private fun SubItemRow(
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
-                subItem.dateCompletedString.ifBlank { "Not Completed" },
+                subItem.dateCompletedString.ifBlank {
+                    formatSubItemDate(subItem.dateCompleted) ?: "Not Completed"
+                },
                 fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF374151)
             )
         }
@@ -1107,4 +1111,26 @@ private fun OptionListDialog(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+private fun formatSubItemDate(dateStr: String?): String? {
+    if (dateStr.isNullOrBlank()) return null
+    return try {
+        val parsers = listOf(
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        )
+        val display = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", java.util.Locale.ENGLISH)
+        for (parser in parsers) {
+            try {
+                val parsed = java.time.LocalDateTime.parse(dateStr.trim(), parser)
+                return parsed.format(display)
+            } catch (_: Exception) {}
+        }
+        dateStr.take(10)
+    } catch (_: Exception) {
+        dateStr.take(10)
+    }
 }

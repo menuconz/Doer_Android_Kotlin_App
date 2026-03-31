@@ -22,9 +22,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Person
@@ -78,7 +78,7 @@ private val Amber = Color(0xFFF59E0B)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimeTrackingDashboardScreen(
-    onBack: () -> Unit,
+    onOpenDrawer: () -> Unit,
     viewModel: TimeTrackingDashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -163,8 +163,8 @@ fun TimeTrackingDashboardScreen(
             TopAppBar(
                 title = { Text("Time Tracking", color = Color.White, fontSize = 18.sp) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+                    IconButton(onClick = onOpenDrawer) {
+                        Icon(Icons.Default.Menu, "Menu", tint = Color.White)
                     }
                 },
                 actions = {

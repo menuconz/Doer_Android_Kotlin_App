@@ -159,7 +159,7 @@ class TurnByTurnNavigationActivity : AppCompatActivity() {
                         // In debug builds, simulate driving along the route at normal speed
                         if (BuildConfig.DEBUG) {
                             navigator?.simulator?.simulateLocationsAlongExistingRoute(
-                                SimulationOptions().speedMultiplier(5f) // 5x speed for testing
+                                SimulationOptions().speedMultiplier(10f) // 5x speed for testing
                             )
                             Timber.d("Simulation started at 5x speed")
                         }

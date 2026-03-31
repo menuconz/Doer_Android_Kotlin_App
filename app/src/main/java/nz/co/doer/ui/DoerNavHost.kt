@@ -81,6 +81,7 @@ import nz.co.doer.ui.profile.EditProfileScreen
 import nz.co.doer.ui.profile.ProfileScreen
 import nz.co.doer.ui.quotation.SendQuoteScreen
 import nz.co.doer.ui.quotation.ViewQuotationsScreen
+import nz.co.doer.service.TrackingManager
 import nz.co.doer.ui.team.FiloKretoTeamScreen
 import nz.co.doer.ui.tracking.LiveTrackingScreen
 import nz.co.doer.ui.tracking.NavigationMapScreen
@@ -107,6 +108,7 @@ fun DoerNavHost(
     secureStorageManager: SecureStorageManager,
     preferencesManager: PreferencesManager,
     shiftRepository: ShiftRepository,
+    trackingManager: TrackingManager,
     activity: MainActivity? = null
 ) {
     val navController = rememberNavController()
@@ -142,6 +144,10 @@ fun DoerNavHost(
     // Helper for logout logic
     val doLogout: () -> Unit = {
         scope.launch {
+            // Auto clock-out if Doer is currently clocked in
+            if (trackingManager.activeShiftId.value != null) {
+                trackingManager.clockOut()
+            }
             secureStorageManager.isLoggedIn = false
             secureStorageManager.clear()
             preferencesManager.clearSession()
@@ -666,7 +672,7 @@ fun DoerNavHost(
 
             composable(Routes.LIVE_TRACKING) {
                 LiveTrackingScreen(
-                    onBack = { navController.popBackStack() }
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
                 )
             }
 
@@ -674,7 +680,7 @@ fun DoerNavHost(
 
             composable(Routes.TIME_TRACKING) {
                 TimeTrackingDashboardScreen(
-                    onBack = { navController.popBackStack() }
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
                 )
             }
         }

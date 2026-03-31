@@ -940,12 +940,18 @@ private fun SubItemDataRow(
         }
 
         // Date Started
-        SubItemTextCell(subItem.dateStartedString.ifBlank { "Not Started" }, SubColStarted) {
+        SubItemTextCell(
+            subItem.dateStartedString.ifBlank { formatSubItemDate(subItem.dateStarted) ?: "Not Started" },
+            SubColStarted
+        ) {
             viewModel.editSubItemDateStarted(shiftId, subItem.id)
         }
 
         // Date Completed
-        SubItemTextCell(subItem.dateCompletedString.ifBlank { "Not Completed" }, SubColCompleted)
+        SubItemTextCell(
+            subItem.dateCompletedString.ifBlank { formatSubItemDate(subItem.dateCompleted) ?: "Not Completed" },
+            SubColCompleted
+        )
 
         // Files button
         Box(
@@ -1406,4 +1412,26 @@ private fun ClientPickerDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+private fun formatSubItemDate(dateStr: String?): String? {
+    if (dateStr.isNullOrBlank()) return null
+    return try {
+        val parsers = listOf(
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        )
+        val display = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", java.util.Locale.ENGLISH)
+        for (parser in parsers) {
+            try {
+                val parsed = java.time.LocalDateTime.parse(dateStr.trim(), parser)
+                return parsed.format(display)
+            } catch (_: Exception) {}
+        }
+        dateStr.take(10)
+    } catch (_: Exception) {
+        dateStr.take(10)
+    }
 }

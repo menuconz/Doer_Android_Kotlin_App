@@ -31,6 +31,9 @@ data class ActiveDoerUi(
     val eta: String?,
     val distanceRemaining: Double?,
     val siteName: String = "",
+    val projectName: String = "",
+    val siteLatitude: Double? = null,
+    val siteLongitude: Double? = null,
     val timeOnSite: String = "",
     val timestamp: String = ""
 ) {
@@ -65,12 +68,16 @@ data class LiveTrackingUiState(
     val totalActiveDoers: Int = 0,
     val enRouteCount: Int = 0,
     val onSiteCount: Int = 0,
-    val arrivedCount: Int = 0
+    val arrivedCount: Int = 0,
+    // Selected Doer route
+    val selectedDoerUserId: String? = null,
+    val selectedDoerRoute: List<com.google.android.gms.maps.model.LatLng> = emptyList()
 )
 
 @HiltViewModel
 class LiveTrackingViewModel @Inject constructor(
-    private val locationTrackingRepository: LocationTrackingRepository
+    private val locationTrackingRepository: LocationTrackingRepository,
+    private val directionsService: nz.co.doer.data.remote.GoogleDirectionsService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LiveTrackingUiState())
@@ -117,6 +124,29 @@ class LiveTrackingViewModel @Inject constructor(
 
     fun refresh() {
         fetchActiveDoers()
+    }
+
+    /** Manager taps a Doer card — show route from Doer to site */
+    fun selectDoer(doer: ActiveDoerUi) {
+        if (doer.siteLatitude == null || doer.siteLongitude == null ||
+            doer.siteLatitude == 0.0 || doer.siteLongitude == 0.0) {
+            _uiState.value = _uiState.value.copy(selectedDoerUserId = doer.userId, selectedDoerRoute = emptyList())
+            return
+        }
+        _uiState.value = _uiState.value.copy(selectedDoerUserId = doer.userId, selectedDoerRoute = emptyList())
+        viewModelScope.launch {
+            val route = directionsService.getRoute(
+                doer.latitude, doer.longitude,
+                doer.siteLatitude, doer.siteLongitude
+            )
+            if (route != null) {
+                _uiState.value = _uiState.value.copy(selectedDoerRoute = route.polylinePoints)
+            }
+        }
+    }
+
+    fun clearSelectedDoer() {
+        _uiState.value = _uiState.value.copy(selectedDoerUserId = null, selectedDoerRoute = emptyList())
     }
 
     fun clearError() {
@@ -178,6 +208,9 @@ class LiveTrackingViewModel @Inject constructor(
             eta = eta,
             distanceRemaining = distanceRemaining,
             siteName = siteName,
+            projectName = projectName,
+            siteLatitude = siteLatitude,
+            siteLongitude = siteLongitude,
             timeOnSite = timeStr,
             timestamp = timestamp
         )
