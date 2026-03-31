@@ -95,7 +95,7 @@ fun SubItemMessagesScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            val fileName = "image_${UUID.randomUUID()}.jpg"
+            val fileName = "IMG_${java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))}.jpg"
             val cacheFile = File(context.cacheDir, fileName)
             context.contentResolver.openInputStream(uri)?.use { input ->
                 cacheFile.outputStream().use { output -> input.copyTo(output) }

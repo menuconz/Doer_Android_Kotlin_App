@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -63,7 +65,7 @@ fun DrawerContent(
     val email by preferencesManager.email.collectAsState(initial = "")
 
     val menuItems = buildList {
-        add(DrawerMenuItem("Calendar", Icons.Default.CalendarMonth, "calendar"))
+        add(DrawerMenuItem("Home", Icons.Default.CalendarMonth, "calendar"))
         add(DrawerMenuItem("NZ Mahi", Icons.Default.Work, "main_leads_jobs"))
         if (isAdmin) {
             add(DrawerMenuItem("New Leads", Icons.Default.Leaderboard, "new_leads", requiresAdmin = true))
@@ -73,18 +75,20 @@ fun DrawerContent(
             add(DrawerMenuItem("FiloKreto Team", Icons.Default.Group, "filo_kreto_team", requiresAdmin = true))
         }
         if (isAdmin || isManager) {
+            add(DrawerMenuItem("Live Tracking", Icons.Default.ShareLocation, "live_tracking", requiresManager = true))
+            add(DrawerMenuItem("Time Tracking", Icons.Default.Schedule, "time_tracking", requiresManager = true))
             add(DrawerMenuItem("Contractors", Icons.Default.Group, "all_contractors", requiresManager = true))
         }
         add(DrawerMenuItem("Profile", Icons.Default.Person, "profile"))
     }
 
     ModalDrawerSheet(
-        modifier = Modifier.width(280.dp)
+        modifier = Modifier.width(280.dp),
+        drawerContainerColor = DrawerBackground
     ) {
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .background(DrawerBackground)
                 .verticalScroll(rememberScrollState())
         ) {
             // Header

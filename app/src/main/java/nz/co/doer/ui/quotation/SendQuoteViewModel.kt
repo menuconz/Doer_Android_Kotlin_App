@@ -92,7 +92,7 @@ class SendQuoteViewModel @Inject constructor(
         _uiState.value = state.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
             val userId = preferencesManager.getUserId()
-            val nowUtc = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            val nowUtc = nz.co.doer.util.Constants.nowNz()
 
             val quotation = JobQuotationDto(
                 id = if (state.isExistingQuote) state.existingQuoteId else 0,

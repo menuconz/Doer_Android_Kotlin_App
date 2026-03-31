@@ -18,6 +18,7 @@ import nz.co.doer.data.remote.api.LocationTrackingApi
 import nz.co.doer.data.remote.api.LogsApi
 import nz.co.doer.data.remote.api.RestHomeApi
 import nz.co.doer.data.remote.api.ShiftApi
+import nz.co.doer.data.remote.api.TimeTrackingApi
 import nz.co.doer.data.remote.interceptor.AuthInterceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -132,4 +133,9 @@ object NetworkModule {
     @Singleton
     fun provideLogsApi(retrofit: Retrofit): LogsApi =
         retrofit.create(LogsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideTimeTrackingApi(retrofit: Retrofit): TimeTrackingApi =
+        retrofit.create(TimeTrackingApi::class.java)
 }

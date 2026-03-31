@@ -226,7 +226,7 @@ class AddShiftViewModel @Inject constructor(
         }
 
         if (toDateTime <= fromDateTime) {
-            _uiState.value = state.copy(errorMessage = "End date/time must be after start date/time")
+            _uiState.value = state.copy(errorMessage = "Please ensure Duration To is later than Duration From")
             return
         }
 

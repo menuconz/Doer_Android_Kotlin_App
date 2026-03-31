@@ -15,6 +15,7 @@ import nz.co.doer.data.remote.api.LocationTrackingApi
 import nz.co.doer.data.remote.api.LogsApi
 import nz.co.doer.data.remote.api.RestHomeApi
 import nz.co.doer.data.remote.api.ShiftApi
+import nz.co.doer.data.remote.api.TimeTrackingApi
 import kotlinx.serialization.json.Json
 import nz.co.doer.data.repository.AccountRepository
 import nz.co.doer.data.repository.CaregiverLevelRepository
@@ -26,6 +27,7 @@ import nz.co.doer.data.repository.LocationTrackingRepository
 import nz.co.doer.data.repository.LogsRepository
 import nz.co.doer.data.repository.RestHomeRepository
 import nz.co.doer.data.repository.ShiftRepository
+import nz.co.doer.data.repository.TimeTrackingRepository
 import javax.inject.Singleton
 
 @Module
@@ -101,4 +103,11 @@ object RepositoryModule {
         logsApi: LogsApi,
         preferencesManager: PreferencesManager
     ): LogsRepository = LogsRepository(logsApi, preferencesManager)
+
+    @Provides
+    @Singleton
+    fun provideTimeTrackingRepository(
+        timeTrackingApi: TimeTrackingApi,
+        preferencesManager: PreferencesManager
+    ): TimeTrackingRepository = TimeTrackingRepository(timeTrackingApi, preferencesManager)
 }

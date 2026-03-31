@@ -156,7 +156,7 @@ class MainLeadsJobsViewModel @Inject constructor(
 
     private var originalJobs: List<JobRowItem> = emptyList()
     private var currentSkip: Int = 0
-    private val pageSize: Int = 20
+    private val pageSize: Int = 100
     private var addressSearchJob: Job? = null
 
     // ──────────────── Resume refresh guard ────────────────
@@ -337,13 +337,24 @@ class MainLeadsJobsViewModel @Inject constructor(
         }
     }
 
-    private fun mapShiftsToRows(shifts: List<ShiftDto>, isOwner: Boolean): List<JobRowItem> {
+    private suspend fun mapShiftsToRows(shifts: List<ShiftDto>, isOwner: Boolean): List<JobRowItem> {
         return shifts.map { shift ->
-            val hasQuotations = !shift.jobQuotations.isNullOrEmpty() &&
+            // Fetch quotations for this shift to get accepted quote amount
+            val quotations = when (val result = shiftRepository.getQuotationsByJobId(shift.id)) {
+                is ApiResult.Success -> result.data
+                else -> emptyList()
+            }
+            val hasQuotations = quotations.isNotEmpty() &&
                     shift.statusId == ShiftStatus.Created.value &&
                     isOwner
+            val acceptedQuote = quotations.firstOrNull { it.status.equals("Accepted", ignoreCase = true) }
+            val enrichedShift = shift.copy(
+                hasQuotations = hasQuotations,
+                acceptedQuoteAmount = acceptedQuote?.quotedAmount ?: shift.acceptedQuoteAmount,
+                acceptedQuotationId = acceptedQuote?.id ?: shift.acceptedQuotationId
+            )
             JobRowItem(
-                shift = shift.copy(hasQuotations = hasQuotations),
+                shift = enrichedShift,
                 statusDisplayText = getStatusText(shift.statusId, hasQuotations),
                 statusColor = getStatusColor(shift.statusId, hasQuotations),
                 invoiceDisplayText = getInvoiceText(shift.invoiceStatus),

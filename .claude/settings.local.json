@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(xargs grep:*)",
+      "Bash(xargs wc:*)",
+      "Bash(find /d/Doer_Android_Kotlin_App/app/src -type f \\\\\\(-name *.kt -o -name *.xml -o -name *.gradle.kts \\\\\\))",
+      "Bash(./gradlew assembleDebug)",
+      "Read(//c/Program Files/Android/Android Studio/jbr/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//d/Doer_Android_Kotlin_App/$LOCALAPPDATA/**)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew assembleDebug)",
+      "Bash(python -c \"import docx; print\\(''''available''''\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python generate_doc.py)",
+      "Bash(python generate_doc_update.py)",
+      "Bash(python update_docx_nav.py)",
+      "Bash(rm update_docx_nav.py)",
+      "Bash(sed -i \"s|Doer_Navigation_ClockInOut_Complete_Guide.docx''$|Doer_Navigation_ClockInOut_Complete_Guide_v2.docx''|g\" update_docx_nav.py)",
+      "Bash(grep -n \"class ShiftSubItem\" \"D:/Doer_Android_Kotlin_App/Doer_Web_API/Doer.Api/Core/Entities/\"*.cs)",
+      "Bash(dotnet build:*)",
+      "Bash(find D:/Doer_Android_Kotlin_App/Doer_Web_API/Doer.Api -name *.sln -o -name *.csproj)",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep \"\\\\.cs$\")",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew clean assembleDebug)",
+      "Bash(curl -s https://developers.google.com/maps/documentation/navigation/android-sdk)",
+      "Bash(curl -s https://developers.google.com/maps/documentation/navigation/android-sdk/get-started)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(curl -sL https://developers.google.com/maps/documentation/navigation/android-sdk/get-started)",
+      "Bash(curl -sL https://blog.afi.io/blog/getting-started-with-the-google-navigation-sdk/)",
+      "Bash(grep -v '^$')",
+      "Bash(python generate_final_doc.py)",
+      "Bash(rm generate_final_doc.py)",
+      "Bash(python generate_client_doc.py)",
+      "Bash(rm generate_client_doc.py)"
+    ]
+  }
+}

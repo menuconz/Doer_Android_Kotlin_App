@@ -169,28 +169,22 @@ fun SendQuoteScreen(
 
                         // Matching MAUI: Frame bg=White, HasShadow=True, CornerRadius=12
                         // Border Stroke=#667685, RoundRectangle 12, StrokeThickness=2, HeightRequest=120
-                        Card(
+                        OutlinedTextField(
+                            value = state.notes,
+                            onValueChange = viewModel::updateNotes,
+                            placeholder = { Text("Enter the Notes", fontSize = 16.sp) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp),
                             shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            OutlinedTextField(
-                                value = state.notes,
-                                onValueChange = viewModel::updateNotes,
-                                placeholder = { Text("Enter the Notes", fontSize = 16.sp) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 120.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedBorderColor = BorderColor,
-                                    focusedBorderColor = BorderColor,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent
-                                ),
-                                textStyle = TextStyle(fontSize = 16.sp)
-                            )
-                        }
+                            colors = OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = BorderColor,
+                                focusedBorderColor = BorderColor,
+                                unfocusedContainerColor = Color.White,
+                                focusedContainerColor = Color.White
+                            ),
+                            textStyle = TextStyle(fontSize = 16.sp)
+                        )
                     }
 
                     // Matching MAUI: Submit Quote Button — StackLayout Margin="0,20,0,30"

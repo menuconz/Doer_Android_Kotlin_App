@@ -11,11 +11,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.remote.ApiResult
+import nz.co.doer.data.remote.dto.ClockLocationType
+import nz.co.doer.data.remote.dto.DoerTrackingState
 import nz.co.doer.data.remote.dto.ShiftDto
+import nz.co.doer.data.remote.dto.ShiftSubItemDto
 import nz.co.doer.data.remote.dto.UserDto
 import nz.co.doer.data.repository.AccountRepository
 import nz.co.doer.data.repository.ClientRepository
 import nz.co.doer.data.repository.ShiftRepository
+import nz.co.doer.service.TrackingManager
 import timber.log.Timber
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -94,7 +98,26 @@ data class ShiftDetailsUiState(
     val canViewReminderOnly: Boolean = false,
     val hasReminderSet: Boolean = false,
     val showReminderSection: Boolean = true,
-    val navigateToFeedbackShiftId: Int? = null
+    val navigateToFeedbackShiftId: Int? = null,
+    val navigateToReviewsShiftId: Int? = null,
+
+    // Tracking state
+    val trackingState: DoerTrackingState = DoerTrackingState.IDLE,
+    val showNavigateButton: Boolean = false,
+    val showClockInButton: Boolean = false,
+    val showClockOutButton: Boolean = false,
+    val markCompleteButton: Boolean = false,
+    val isTrackingActive: Boolean = false,
+    val selectedClockLocationType: ClockLocationType = ClockLocationType.SITE,
+    val needsLocationPermission: Boolean = false,
+
+    // Stage selection for clock-in
+    val availableStages: List<ShiftSubItemDto> = emptyList(),
+    val selectedStageName: String = "",
+
+    // Multi-site warning
+    val showMultiSiteWarning: Boolean = false,
+    val activeShiftProjectName: String = ""
 ) {
     companion object {
         val defaultReminderOptions = listOf(
@@ -117,6 +140,7 @@ class ShiftDetailsViewModel @Inject constructor(
     private val accountRepository: AccountRepository,
     private val clientRepository: ClientRepository,
     private val preferencesManager: PreferencesManager,
+    private val trackingManager: TrackingManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -139,6 +163,18 @@ class ShiftDetailsViewModel @Inject constructor(
 
     init {
         loadShiftDetails()
+        observeTrackingState()
+    }
+
+    private fun observeTrackingState() {
+        viewModelScope.launch {
+            trackingManager.trackingState.collect { state ->
+                _uiState.value = _uiState.value.copy(
+                    trackingState = state,
+                    isTrackingActive = state != DoerTrackingState.IDLE && state != DoerTrackingState.CLOCKED_OUT
+                )
+            }
+        }
     }
 
     fun refresh() {
@@ -229,6 +265,23 @@ class ShiftDetailsViewModel @Inject constructor(
                     }
                     val canViewOnly = !canEdit && hasReminder
 
+                    // Tracking button visibility
+                    val showNavigate = prefIsCaregiver && statusId >= 2 && statusId <= 3
+                            && shift.latitude != null && shift.longitude != null
+                            && shift.latitude != 0.0 && shift.longitude != 0.0
+                    // Show Clock In when: Accepted (first time) OR Ongoing but not currently clocked in (multi-day)
+                    val showClockIn = prefIsCaregiver
+                            && (statusId == 2 || statusId == 3)
+                            && trackingManager.trackingState.value == DoerTrackingState.IDLE
+                    val showClockOut = prefIsCaregiver
+                            && trackingManager.activeShiftId.value == shift.id
+                            && trackingManager.trackingState.value != DoerTrackingState.IDLE
+                            && trackingManager.trackingState.value != DoerTrackingState.CLOCKED_OUT
+                    // Show Mark Complete when: Ongoing AND not currently clocked in at this shift
+                    val showMarkComplete = prefIsCaregiver && statusId == 3
+                            && (trackingManager.activeShiftId.value != shift.id
+                            || trackingManager.trackingState.value == DoerTrackingState.IDLE)
+
                     _uiState.value = _uiState.value.copy(
                         shift = shift,
                         isLoading = false,
@@ -267,8 +320,44 @@ class ShiftDetailsViewModel @Inject constructor(
                         canViewReminderOnly = canViewOnly,
                         hasReminderSet = hasReminder,
                         selectedManagerId = shift.userId?.ifBlank { null },
-                        originalManagerId = shift.userId ?: ""
+                        originalManagerId = shift.userId ?: "",
+                        showNavigateButton = showNavigate,
+                        showClockInButton = showClockIn,
+                        showClockOutButton = showClockOut,
+                        markCompleteButton = showMarkComplete,
+                        trackingState = trackingManager.trackingState.value,
+                        isTrackingActive = trackingManager.trackingState.value != DoerTrackingState.IDLE
+                                && trackingManager.trackingState.value != DoerTrackingState.CLOCKED_OUT
                     )
+
+                    // Load available stages (sub-items) for stage selection on clock-in
+                    if (prefIsCaregiver && (statusId == 2 || statusId == 3)) {
+                        var stages = shift.shiftSubItems ?: emptyList()
+                        // If sub-items not included in shift response, fetch separately
+                        if (stages.isEmpty()) {
+                            when (val subResult = shiftRepository.getSubItemsByJobId(shift.id)) {
+                                is ApiResult.Success -> stages = subResult.data
+                                else -> {}
+                            }
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            availableStages = stages,
+                            selectedStageName = stages.firstOrNull()?.subitem ?: ""
+                        )
+                    }
+
+                    // Check multi-site: if Doer is already clocked in at another shift
+                    val activeTrackingShiftId = trackingManager.activeShiftId.value
+                    if (activeTrackingShiftId != null && activeTrackingShiftId != shift.id
+                        && trackingManager.trackingState.value != DoerTrackingState.IDLE
+                        && trackingManager.trackingState.value != DoerTrackingState.CLOCKED_OUT
+                    ) {
+                        _uiState.value = _uiState.value.copy(
+                            showMultiSiteWarning = true,
+                            showClockInButton = false,
+                            activeShiftProjectName = "Shift #$activeTrackingShiftId"
+                        )
+                    }
 
                     // Fetch contractor details if manager/admin/customer and status != Created
                     if (isManagerSection && shift.caregiverId.isNotBlank()) {
@@ -345,12 +434,131 @@ class ShiftDetailsViewModel @Inject constructor(
 
     // ========== Actions ==========
 
-    fun startShift() {
+    fun selectClockLocationType(type: ClockLocationType) {
+        _uiState.value = _uiState.value.copy(selectedClockLocationType = type)
+    }
+
+    fun selectStage(stageName: String) {
+        _uiState.value = _uiState.value.copy(selectedStageName = stageName)
+    }
+
+    fun dismissMultiSiteWarning() {
+        _uiState.value = _uiState.value.copy(showMultiSiteWarning = false)
+    }
+
+    /** Clock out from the other active shift so Doer can clock in here */
+    fun clockOutOtherShift() {
+        trackingManager.clockOut()
+        _uiState.value = _uiState.value.copy(
+            showMultiSiteWarning = false,
+            showClockInButton = true
+        )
+    }
+
+    /**
+     * Clock in with tracking. Starts the state machine + geofencing + location service.
+     * @param currentLatitude Doer's current GPS latitude
+     * @param currentLongitude Doer's current GPS longitude
+     */
+    fun clockInWithTracking(currentLatitude: Double, currentLongitude: Double) {
+        val shift = _uiState.value.shift ?: return
+        val locationType = _uiState.value.selectedClockLocationType
+
+        // Start tracking state machine
+        trackingManager.clockIn(
+            shiftId = shift.id,
+            locationType = locationType,
+            siteLatitude = shift.latitude,
+            siteLongitude = shift.longitude,
+            currentLatitude = currentLatitude,
+            currentLongitude = currentLongitude,
+            projectName = shift.projectName.ifBlank { "Site #${shift.id}" }
+        )
+
+        // Also update shift status on the server (existing logic)
+        startShift()
+
+        // Refresh UI to show Clock Out button instead of Clock In
+        refresh()
+    }
+
+    /**
+     * Clock out with tracking. Stops all tracking services.
+     * @param currentLatitude Doer's current GPS latitude
+     * @param currentLongitude Doer's current GPS longitude
+     * @param reasonCode Optional reason for manual clock-out
+     */
+    fun clockOutWithTracking(
+        currentLatitude: Double = 0.0,
+        currentLongitude: Double = 0.0,
+        reasonCode: String? = null
+    ) {
+        trackingManager.clockOut(currentLatitude, currentLongitude, reasonCode)
+
+        // Don't change shift status — stays Ongoing (3) for multi-day projects
+        // Contractor uses "Mark Complete" when all work is done
+        _uiState.value = _uiState.value.copy(
+            successMessage = "Clocked out successfully"
+        )
+        refresh()
+    }
+
+    /**
+     * Contractor marks the shift as complete (all work done across all days).
+     * Sets StatusId = 4 (Completed). Manager then reviews and finishes (StatusId = 6).
+     */
+    fun markShiftComplete() {
         val shift = _uiState.value.shift ?: return
         _uiState.value = _uiState.value.copy(isUpdating = true, errorMessage = null)
         viewModelScope.launch {
             val userId = preferencesManager.getUserId()
-            val nowUtc = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            val nowUtc = nz.co.doer.util.Constants.nowNz()
+            val updated = shift.copy(
+                modifiedBy = userId,
+                modifiedDate = nowUtc,
+                shiftEndTime = nowUtc,
+                statusId = 4
+            )
+            when (val result = shiftRepository.updateShift(updated)) {
+                is ApiResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        isUpdating = false,
+                        successMessage = "Shift marked as complete"
+                    )
+                }
+                is ApiResult.Error -> {
+                    Timber.e("Failed to mark shift complete: ${result.message}")
+                    _uiState.value = _uiState.value.copy(
+                        isUpdating = false,
+                        errorMessage = result.message
+                    )
+                }
+                is ApiResult.Loading -> {}
+            }
+        }
+    }
+
+    fun requestLocationPermission() {
+        _uiState.value = _uiState.value.copy(needsLocationPermission = true)
+    }
+
+    fun onLocationPermissionHandled() {
+        _uiState.value = _uiState.value.copy(needsLocationPermission = false)
+    }
+
+    fun startShift() {
+        val shift = _uiState.value.shift ?: return
+        // Only update status to Ongoing on FIRST clock-in (Accepted → Ongoing)
+        // For subsequent clock-ins (already Ongoing), just record the clock event
+        if (shift.statusId == 3) {
+            // Already Ongoing — no need to update shift status again
+            _uiState.value = _uiState.value.copy(successMessage = "Clocked in")
+            return
+        }
+        _uiState.value = _uiState.value.copy(isUpdating = true, errorMessage = null)
+        viewModelScope.launch {
+            val userId = preferencesManager.getUserId()
+            val nowUtc = nz.co.doer.util.Constants.nowNz()
             val updated = shift.copy(
                 modifiedBy = userId,
                 modifiedDate = nowUtc,
@@ -381,7 +589,7 @@ class ShiftDetailsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(isUpdating = true, errorMessage = null)
         viewModelScope.launch {
             val userId = preferencesManager.getUserId()
-            val nowUtc = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            val nowUtc = nz.co.doer.util.Constants.nowNz()
             val updated = shift.copy(
                 modifiedBy = userId,
                 modifiedDate = nowUtc,
@@ -412,7 +620,7 @@ class ShiftDetailsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(isUpdating = true, errorMessage = null)
         viewModelScope.launch {
             val userId = preferencesManager.getUserId()
-            val nowUtc = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            val nowUtc = nz.co.doer.util.Constants.nowNz()
             val updated = shift.copy(
                 modifiedBy = userId,
                 modifiedDate = nowUtc,
@@ -475,10 +683,11 @@ class ShiftDetailsViewModel @Inject constructor(
     }
 
     fun viewReviews() {
-        // Navigate to Reviews screen - not implemented yet
-        _uiState.value = _uiState.value.copy(
-            successMessage = "Reviews screen not yet implemented"
-        )
+        _uiState.value = _uiState.value.copy(navigateToReviewsShiftId = shiftId)
+    }
+
+    fun onReviewsNavigated() {
+        _uiState.value = _uiState.value.copy(navigateToReviewsShiftId = null)
     }
 
     fun updateIsAllDay(isAllDay: Boolean) {

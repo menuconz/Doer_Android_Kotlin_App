@@ -108,26 +108,32 @@ fun DayTimelineScreen(
                 lazyListState.animateScrollToItem(selectedIndex)
             }
 
-            // Lazy load future dates when scrolling near end
+            // Lazy load dates when scrolling near edges (single LaunchedEffect to prevent re-entry)
+            var isLoadingDates = false
             LaunchedEffect(lazyListState) {
                 snapshotFlow {
-                    val lastVisible = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                    val totalItems = lazyListState.layoutInfo.totalItemsCount
-                    Pair(lastVisible, totalItems)
-                }.distinctUntilChanged().collect { (lastVisible, totalItems) ->
+                    Triple(
+                        lazyListState.firstVisibleItemIndex,
+                        lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0,
+                        lazyListState.layoutInfo.totalItemsCount
+                    )
+                }.distinctUntilChanged().collect { (firstVisible, lastVisible, totalItems) ->
+                    if (isLoadingDates) return@collect
+                    // Load future dates when near end
                     if (totalItems > 0 && lastVisible >= totalItems - 5) {
+                        isLoadingDates = true
                         viewModel.loadMoreFutureDates()
+                        isLoadingDates = false
                     }
-                }
-            }
-
-            // Lazy load past dates when scrolling near start
-            LaunchedEffect(lazyListState) {
-                snapshotFlow {
-                    lazyListState.firstVisibleItemIndex
-                }.distinctUntilChanged().collect { firstVisible ->
-                    if (firstVisible <= 5) {
-                        viewModel.loadMorePastDates()
+                    // Load past dates when near start
+                    if (firstVisible <= 5 && totalItems > 0) {
+                        isLoadingDates = true
+                        val added = viewModel.loadMorePastDates()
+                        // Adjust scroll position to keep current view stable
+                        if (added > 0) {
+                            lazyListState.scrollToItem(firstVisible + added)
+                        }
+                        isLoadingDates = false
                     }
                 }
             }

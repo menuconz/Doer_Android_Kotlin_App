@@ -339,14 +339,21 @@ class DayDetailViewModel @Inject constructor(
                 else -> emptyList()
             }
 
-            val quotationsExist = when (val result = shiftRepository.getQuotationsByJobId(shift.id)) {
-                is ApiResult.Success -> result.data.isNotEmpty()
-                else -> false
+            val quotations = when (val result = shiftRepository.getQuotationsByJobId(shift.id)) {
+                is ApiResult.Success -> result.data
+                else -> emptyList()
             }
-            val hasQuotations = quotationsExist && shift.statusId == 1 && isOwner
+            val hasQuotations = quotations.isNotEmpty() && shift.statusId == 1 && isOwner
+
+            // Get accepted quotation amount
+            val acceptedQuote = quotations.firstOrNull { it.status.equals("Accepted", ignoreCase = true) }
+            val enrichedShift = shift.copy(
+                acceptedQuoteAmount = acceptedQuote?.quotedAmount ?: shift.acceptedQuoteAmount,
+                acceptedQuotationId = acceptedQuote?.id ?: shift.acceptedQuotationId
+            )
 
             ShiftDisplayRow(
-                shift = shift,
+                shift = enrichedShift,
                 subItems = subItems,
                 statusMessage = getStatusMessage(shift.statusId, hasQuotations),
                 statusColor = CalendarViewModel.getStatusColor(shift.statusId, hasQuotations),
