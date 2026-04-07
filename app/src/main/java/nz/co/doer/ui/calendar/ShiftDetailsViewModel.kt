@@ -246,7 +246,8 @@ class ShiftDetailsViewModel @Inject constructor(
                     val rejectBtn = prefIsCaregiver && (statusId == 2 || statusId == 3)
                     val endBtn = prefIsCaregiver && statusId == 3
                     val completeBtn = prefIsManager && statusId == 4
-                    val reviewsBtn = prefIsCaregiver && statusId == 6
+                    // Reviews button: visible only when contractor hasn't responded to manager's feedback yet
+                    val reviewsBtn = prefIsCaregiver && statusId == 6 && shift.contractorResponseToReview.isBlank()
                     val feedback = statusId == 6 && shift.feedback.isNotBlank()
 
                     // --- Reminder ---

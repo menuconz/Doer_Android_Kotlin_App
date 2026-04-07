@@ -32,7 +32,13 @@
       "Bash(python generate_final_doc.py)",
       "Bash(rm generate_final_doc.py)",
       "Bash(python generate_client_doc.py)",
-      "Bash(rm generate_client_doc.py)"
+      "Bash(rm generate_client_doc.py)",
+      "Bash(python gen_short_doc.py)",
+      "Bash(rm gen_short_doc.py)",
+      "Bash(grep -E \"\\\\.swift$\")",
+      "Bash(find D:\\\\Doer_Android_Kotlin_App\\\\Doer_iOS_Swift_App-main\\\\Doer:*)",
+      "Bash(grep -E \"\\\\.\\(swift|m\\)$\")",
+      "Bash(grep -n \"//.*Start\\\\|//.*End\\\\|Commented\\\\|commented\" \"D:\\\\Doer_Android_Kotlin_App\\\\app\\\\src\\\\main\\\\java\\\\nz\\\\co\\\\doer\\\\ui\\\\calendar\\\\ShiftDetailsScreen.kt\")"
     ]
   }
 }
