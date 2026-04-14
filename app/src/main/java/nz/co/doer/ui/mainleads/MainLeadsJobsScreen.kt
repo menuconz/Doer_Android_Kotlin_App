@@ -227,11 +227,8 @@ fun MainLeadsJobsScreen(
             ViewModePicker(state, viewModel)
 
             // ──── Content ────
-            if (state.isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (state.jobs.isEmpty()) {
+            Box(modifier = Modifier.weight(1f)) {
+            if (state.jobs.isEmpty() && !state.isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No jobs found for this month", color = Color.Gray, fontSize = 16.sp)
                 }
@@ -239,10 +236,10 @@ fun MainLeadsJobsScreen(
                 // ──── List / Table View ────
                 Row(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxSize()
                         .horizontalScroll(horizontalScrollState)
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxSize()) {
                         // Header Row
                         TableHeader(state, viewModel)
 
@@ -275,10 +272,22 @@ fun MainLeadsJobsScreen(
                         }
                     }
                 }
-            } else {
+            } else if (!state.isListView) {
                 // ──── Kanban View ────
                 KanbanView(state, onShiftDetails, onViewMessages)
             }
+            // Loading overlay on top of content
+            if (state.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.White.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            } // Close outer Box
         }
     }
 }
@@ -863,7 +872,7 @@ private fun SubItemHeaderCell(text: String, width: Dp, isFirst: Boolean = false,
             .background(HeaderBg)
             .border(0.5.dp, Color.Gray)
             .padding(10.dp, 0.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
         Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
     }
@@ -931,12 +940,18 @@ private fun SubItemDataRow(
         }
 
         // Date Started
-        SubItemTextCell(subItem.dateStartedString.ifBlank { "Not Started" }, SubColStarted) {
+        SubItemTextCell(
+            subItem.dateStartedString.ifBlank { formatSubItemDate(subItem.dateStarted) ?: "Not Started" },
+            SubColStarted
+        ) {
             viewModel.editSubItemDateStarted(shiftId, subItem.id)
         }
 
         // Date Completed
-        SubItemTextCell(subItem.dateCompletedString.ifBlank { "Not Completed" }, SubColCompleted)
+        SubItemTextCell(
+            subItem.dateCompletedString.ifBlank { formatSubItemDate(subItem.dateCompleted) ?: "Not Completed" },
+            SubColCompleted
+        )
 
         // Files button
         Box(
@@ -1397,4 +1412,26 @@ private fun ClientPickerDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+private fun formatSubItemDate(dateStr: String?): String? {
+    if (dateStr.isNullOrBlank()) return null
+    return try {
+        val parsers = listOf(
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        )
+        val display = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", java.util.Locale.ENGLISH)
+        for (parser in parsers) {
+            try {
+                val parsed = java.time.LocalDateTime.parse(dateStr.trim(), parser)
+                return parsed.format(display)
+            } catch (_: Exception) {}
+        }
+        dateStr.take(10)
+    } catch (_: Exception) {
+        dateStr.take(10)
+    }
 }

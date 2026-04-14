@@ -153,6 +153,60 @@ enum class FilterColumnType {
     SubItemColumn
 }
 
+// --- DoerTrackingState ---
+enum class DoerTrackingState(val value: Int) {
+    IDLE(0),
+    CLOCKED_IN(1),
+    EN_ROUTE(2),
+    ARRIVED(3),
+    ON_SITE(4),
+    LEAVING(5),
+    CLOCKED_OUT(6);
+
+    companion object {
+        fun fromValue(value: Int): DoerTrackingState =
+            entries.firstOrNull { it.value == value } ?: IDLE
+
+        /** Returns the set of states that are valid next transitions from [current]. */
+        fun validTransitions(current: DoerTrackingState): Set<DoerTrackingState> = when (current) {
+            IDLE -> setOf(CLOCKED_IN)
+            CLOCKED_IN -> setOf(EN_ROUTE, ON_SITE, CLOCKED_OUT) // EN_ROUTE if heading to site, ON_SITE if already at yard/office
+            EN_ROUTE -> setOf(ARRIVED, CLOCKED_OUT) // ARRIVED via geofence, CLOCKED_OUT for manual override
+            ARRIVED -> setOf(ON_SITE, CLOCKED_OUT)
+            ON_SITE -> setOf(LEAVING, CLOCKED_OUT)
+            LEAVING -> setOf(ON_SITE, CLOCKED_OUT) // ON_SITE if re-enters within grace period
+            CLOCKED_OUT -> setOf(CLOCKED_IN) // Can clock in again at a new site
+        }
+    }
+}
+
+// --- ClockLocationType ---
+enum class ClockLocationType(val value: Int) {
+    SITE(1),
+    YARD(2),
+    OFFICE(3);
+
+    companion object {
+        fun fromValue(value: Int): ClockLocationType =
+            entries.firstOrNull { it.value == value } ?: SITE
+    }
+}
+
+// --- ClockEventType ---
+enum class ClockEventType(val value: String) {
+    CLOCK_IN("CLOCK_IN"),
+    CLOCK_OUT("CLOCK_OUT"),
+    LOCATION_UPDATE("LOCATION_UPDATE"),
+    GEOFENCE_ENTER("GEOFENCE_ENTER"),
+    GEOFENCE_EXIT("GEOFENCE_EXIT"),
+    STATE_CHANGE("STATE_CHANGE");
+
+    companion object {
+        fun fromValue(value: String): ClockEventType =
+            entries.firstOrNull { it.value.equals(value, ignoreCase = true) } ?: STATE_CHANGE
+    }
+}
+
 // --- FilterCondition ---
 @Serializable
 enum class FilterCondition {

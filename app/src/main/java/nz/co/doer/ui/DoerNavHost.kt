@@ -81,7 +81,11 @@ import nz.co.doer.ui.profile.EditProfileScreen
 import nz.co.doer.ui.profile.ProfileScreen
 import nz.co.doer.ui.quotation.SendQuoteScreen
 import nz.co.doer.ui.quotation.ViewQuotationsScreen
+import nz.co.doer.service.TrackingManager
 import nz.co.doer.ui.team.FiloKretoTeamScreen
+import nz.co.doer.ui.tracking.LiveTrackingScreen
+import nz.co.doer.ui.tracking.NavigationMapScreen
+import nz.co.doer.ui.tracking.TimeTrackingDashboardScreen
 
 // Routes that show the drawer hamburger menu
 private val DRAWER_ROUTES = setOf(
@@ -94,6 +98,8 @@ private val DRAWER_ROUTES = setOf(
     Routes.ALL_CONTRACTORS,
     Routes.PROFILE,
     Routes.FILO_KRETO_TEAM,
+    Routes.LIVE_TRACKING,
+    Routes.TIME_TRACKING,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,6 +108,7 @@ fun DoerNavHost(
     secureStorageManager: SecureStorageManager,
     preferencesManager: PreferencesManager,
     shiftRepository: ShiftRepository,
+    trackingManager: TrackingManager,
     activity: MainActivity? = null
 ) {
     val navController = rememberNavController()
@@ -137,6 +144,10 @@ fun DoerNavHost(
     // Helper for logout logic
     val doLogout: () -> Unit = {
         scope.launch {
+            // Auto clock-out if Doer is currently clocked in
+            if (trackingManager.activeShiftId.value != null) {
+                trackingManager.clockOut()
+            }
             secureStorageManager.isLoggedIn = false
             secureStorageManager.clear()
             preferencesManager.clearSession()
@@ -154,8 +165,10 @@ fun DoerNavHost(
                 preferencesManager = preferencesManager,
                 currentRoute = currentRoute,
                 onNavigate = { route ->
-                    scope.launch { drawerState.close() }
-                    navController.navigate(route) { launchSingleTop = true }
+                    scope.launch {
+                        drawerState.close()
+                        navController.navigate(route) { launchSingleTop = true }
+                    }
                 },
                 onLogout = {
                     scope.launch { drawerState.close() }
@@ -245,7 +258,7 @@ fun DoerNavHost(
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text("Calendar", color = Color.White) },
+                            title = { Text("Home", color = Color.White) },
                             navigationIcon = {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                     Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
@@ -362,6 +375,16 @@ fun DoerNavHost(
                     },
                     onSendFeedback = { shiftId ->
                         navController.navigate("${Routes.SEND_FEEDBACK}/$shiftId")
+                    },
+                    onViewReviews = { shiftId ->
+                        navController.navigate("${Routes.REVIEWS}/$shiftId")
+                    },
+                    onNavigateToSite = { shiftId, lat, lng, address, project ->
+                        val encodedAddr = java.net.URLEncoder.encode(address, "UTF-8")
+                        val encodedProj = java.net.URLEncoder.encode(project, "UTF-8")
+                        navController.navigate(
+                            "${Routes.NAVIGATION_MAP}/$shiftId/$lat/$lng/$encodedAddr/$encodedProj"
+                        )
                     }
                 )
             }
@@ -635,6 +658,30 @@ fun DoerNavHost(
 
             composable(Routes.FILO_KRETO_TEAM) {
                 FiloKretoTeamScreen(onOpenDrawer = { scope.launch { drawerState.open() } })
+            }
+
+            // ===================== LIVE TRACKING =====================
+
+            composable(
+                "${Routes.NAVIGATION_MAP}/{shiftId}/{siteLat}/{siteLng}/{siteAddress}/{projectName}"
+            ) {
+                NavigationMapScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.LIVE_TRACKING) {
+                LiveTrackingScreen(
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
+                )
+            }
+
+            // ===================== TIME TRACKING DASHBOARD =====================
+
+            composable(Routes.TIME_TRACKING) {
+                TimeTrackingDashboardScreen(
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
+                )
             }
         }
     }

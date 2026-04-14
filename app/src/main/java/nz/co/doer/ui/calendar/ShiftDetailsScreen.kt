@@ -1,6 +1,15 @@
 package nz.co.doer.ui.calendar
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,16 +28,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,10 +65,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.android.gms.location.LocationServices
+import nz.co.doer.data.remote.dto.ClockLocationType
+import nz.co.doer.data.remote.dto.DoerTrackingState
+import nz.co.doer.ui.tracking.TurnByTurnNavigationActivity
 
 private val Blue = Color(0xFF007AFF)
 private val Gray500 = Color(0xFF6B7280)
@@ -69,6 +87,8 @@ fun ShiftDetailsScreen(
     onSendQuote: (Int) -> Unit = {},
     onViewQuotations: (Int) -> Unit = {},
     onSendFeedback: (Int) -> Unit = {},
+    onViewReviews: (Int) -> Unit = {},
+    onNavigateToSite: (shiftId: Int, lat: Double, lng: Double, address: String, projectName: String) -> Unit = { _, _, _, _, _ -> },
     viewModel: ShiftDetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -83,6 +103,13 @@ fun ShiftDetailsScreen(
         state.navigateToFeedbackShiftId?.let { shiftId ->
             viewModel.onFeedbackNavigated()
             onSendFeedback(shiftId)
+        }
+    }
+
+    LaunchedEffect(state.navigateToReviewsShiftId) {
+        state.navigateToReviewsShiftId?.let { shiftId ->
+            viewModel.onReviewsNavigated()
+            onViewReviews(shiftId)
         }
     }
 
@@ -176,12 +203,135 @@ fun ShiftDetailsScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .background(BgColor)
+            ) {
+            // Scrollable content
+            Column(
+                modifier = Modifier
+                    .weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp, 30.dp, 20.dp, 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                    modifier = Modifier.padding(20.dp, 15.dp, 20.dp, 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // ===== SECTION 1: Status + Project Info (combined card) =====
+                    Card(
+                        shape = RoundedCornerShape(15.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Status badge + Project Name in one row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = shift.projectName.ifBlank { "Not Set" },
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1F2937),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(state.statusColor))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(state.statusMessage, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            // Client + Location
+                            if (!shift.clientName.isNullOrBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("\uD83D\uDC64", fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(shift.clientName ?: "", fontSize = 14.sp, color = Gray500)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("\uD83D\uDCCD", fontSize = 14.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(shift.address.ifBlank { "Not Set" }, fontSize = 14.sp, color = Gray500)
+                            }
+                        }
+                    }
+
+                    // ===== SECTION 2: Tracking + Navigate + Clock In/Out (actions first) =====
+
+                    // Tracking Status Card
+                    if (state.isTrackingActive && state.isCaregiver) {
+                        TrackingStatusCard(trackingState = state.trackingState)
+                    }
+
+                    // Navigate Button
+                    if (state.showNavigateButton) {
+                        val navContext = LocalContext.current
+                        Button(
+                            onClick = {
+                                TurnByTurnNavigationActivity.start(
+                                    navContext,
+                                    shift.latitude ?: 0.0,
+                                    shift.longitude ?: 0.0,
+                                    shift.projectName.ifBlank { "Site #${shift.id}" }
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) {
+                            Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Navigate to Site", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                        }
+                    }
+
+                    // Multi-site warning
+                    if (state.showMultiSiteWarning) {
+                        Card(
+                            shape = RoundedCornerShape(15.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "You are currently clocked in at ${state.activeShiftProjectName}. Clock out first before clocking in here.",
+                                    fontSize = 14.sp, color = Color(0xFF856404)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { viewModel.clockOutOtherShift() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Clock Out from ${state.activeShiftProjectName}", fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+
+                    // Clock In/Out Section
+                    if (state.showClockInButton || state.showClockOutButton) {
+                        ClockInOutSection(
+                            showClockIn = state.showClockInButton,
+                            showClockOut = state.showClockOutButton,
+                            selectedLocationType = state.selectedClockLocationType,
+                            onSelectLocationType = viewModel::selectClockLocationType,
+                            availableStages = state.availableStages,
+                            selectedStageName = state.selectedStageName,
+                            onSelectStage = viewModel::selectStage,
+                            onClockIn = { lat, lng -> viewModel.clockInWithTracking(lat, lng) },
+                            onClockOut = { lat, lng -> viewModel.clockOutWithTracking(lat, lng) }
+                        )
+                    }
+
+                    // ===== SECTION 3: People Info (Admin/Manager) =====
+
                     // Manager Selection (Admin only)
                     if (state.isAdmin) {
                         ManagerPickerSection(
@@ -197,8 +347,7 @@ fun ShiftDetailsScreen(
                     // Manager Information Card (Admin only)
                     if (state.isAdmin && state.managerName.isNotBlank()) {
                         InfoCard(
-                            icon = "\uD83D\uDC64",
-                            title = "Manager Information",
+                            icon = "\uD83D\uDC64", title = "Manager Information",
                             rows = listOf(
                                 "\uD83D\uDC64" to ("Manager Name:" to state.managerName),
                                 "\uD83D\uDCE7" to ("Manager Email:" to state.managerEmail),
@@ -207,11 +356,10 @@ fun ShiftDetailsScreen(
                         )
                     }
 
-                    // Contractor Information Card (Manager/Admin/Customer when status != Created)
+                    // Contractor Information Card
                     if (state.isManager && state.contractorName.isNotBlank()) {
                         InfoCard(
-                            icon = "\uD83D\uDC64",
-                            title = "Contractor Information",
+                            icon = "\uD83D\uDC64", title = "Contractor Information",
                             rows = listOf(
                                 "\uD83D\uDC64" to ("Name:" to state.contractorName),
                                 "\uD83D\uDCE7" to ("Email:" to state.contractorEmail),
@@ -220,58 +368,88 @@ fun ShiftDetailsScreen(
                         )
                     }
 
-                    // Project Name
-                    DetailCard(icon = "\uD83D\uDCCB", title = "Project Name") {
-                        Text(
-                            text = shift.projectName.ifBlank { "Not Set" },
-                            fontSize = 16.sp,
-                            color = Gray500,
-                            modifier = Modifier.padding(start = 26.dp)
-                        )
-                    }
-
-                    // Client Name
-                    DetailCard(icon = "\uD83D\uDC64", title = "Client Name") {
-                        Text(
-                            text = shift.clientName ?: "",
-                            fontSize = 16.sp,
-                            color = Gray500,
-                            modifier = Modifier.padding(start = 26.dp)
-                        )
-                    }
-
-                    // All Day toggle (Manager/Admin only)
-                    if (state.isAllDayEditable) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 15.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "All Day",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Blue
-                                )
-                                Spacer(modifier = Modifier.weight(1f))
-                                Switch(
-                                    checked = state.isAllDay,
-                                    onCheckedChange = { checked ->
-                                        viewModel.updateIsAllDay(checked)
-                                        viewModel.updateShift()
-                                    }
-                                )
+                    // ===== SECTION 4: Schedule + Details (combined card) =====
+                    DetailCard(icon = "\u23F0", title = "Job Schedule") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ScheduleRow("\uD83D\uDD50 Duration From:", state.durationFromFormatted)
+                            ScheduleRow("\uD83D\uDD55 Duration To:", state.durationToFormatted)
+                            if (state.showShiftStartTime && state.shiftStartTimeFormatted.isNotBlank()) {
+                                ScheduleRow("\u2705 Actual Start:", state.shiftStartTimeFormatted)
+                            }
+                            if (state.showShiftEndTime && state.shiftEndTimeFormatted.isNotBlank()) {
+                                ScheduleRow("\uD83C\uDFC1 Actual End:", state.shiftEndTimeFormatted)
                             }
                         }
                     }
 
-                    // Reminder Section
+                    // Job Description
+                    if (shift.instructions.isNotBlank()) {
+                        DetailCard(icon = "\uD83D\uDCDD", title = "Job Description") {
+                            Text(
+                                text = shift.instructions,
+                                fontSize = 14.sp, color = Gray500,
+                                modifier = Modifier.padding(start = 26.dp)
+                            )
+                        }
+                    }
+
+                    // ===== SECTION 5: Contract + Invoice + H&S (combined card) =====
+                    Card(
+                        shape = RoundedCornerShape(15.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("\uD83D\uDCC4", fontSize = 18.sp)
+                                Text("Job Details", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Blue)
+                            }
+                            // Contract Type
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Contract Type", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                                Text(state.contractTypeText, fontSize = 14.sp, color = Color(0xFF1F2937))
+                            }
+                            // Invoice Status
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Invoice Status", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                                Text(state.invoiceStatusText, fontSize = 14.sp, color = Color(0xFF1F2937))
+                            }
+                            // H&S Form (only if set)
+                            if (state.showHsForm) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("H&S Forms", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(state.hsFormColor))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(state.hsFormText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
+                            // All Day toggle (Manager/Admin only)
+                            if (state.isAllDayEditable) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("All Day", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Switch(
+                                        checked = state.isAllDay,
+                                        onCheckedChange = { checked ->
+                                            viewModel.updateIsAllDay(checked)
+                                            viewModel.updateShift()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ===== SECTION 6: Reminder =====
                     if (state.showReminderSection) {
                         ReminderCard(
                             canEdit = state.canEditReminder,
@@ -287,171 +465,41 @@ fun ShiftDetailsScreen(
                         )
                     }
 
-                    // Job Location
-                    DetailCard(icon = "\uD83D\uDCCD", title = "Job Location") {
-                        Text(
-                            text = shift.address.ifBlank { "Not Set" },
-                            fontSize = 16.sp,
-                            color = Gray500,
-                            modifier = Modifier.padding(start = 26.dp)
-                        )
-                    }
-
-                    // Job Schedule
-                    DetailCard(icon = "\u23F0", title = "Job Schedule") {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            ScheduleRow("\uD83D\uDD50 Duration From:", state.durationFromFormatted)
-                            ScheduleRow("\uD83D\uDD55 Duration To:", state.durationToFormatted)
-                            if (state.showShiftStartTime && state.shiftStartTimeFormatted.isNotBlank()) {
-                                ScheduleRow("\u2705 Actual Start:", state.shiftStartTimeFormatted)
-                            }
-                            if (state.showShiftEndTime && state.shiftEndTimeFormatted.isNotBlank()) {
-                                ScheduleRow("\uD83C\uDFC1 Actual End:", state.shiftEndTimeFormatted)
-                            }
-                        }
-                    }
-
-                    // Job Description
-                    DetailCard(icon = "\uD83D\uDCDD", title = "Job Description") {
-                        Text(
-                            text = shift.instructions.ifBlank { "No description" },
-                            fontSize = 16.sp,
-                            color = Gray500,
-                            modifier = Modifier.padding(start = 26.dp)
-                        )
-                    }
-
-                    // Contract Type
-                    DetailCard(icon = "\uD83D\uDCC4", title = "Contract Type") {
-                        Text(
-                            text = state.contractTypeText,
-                            fontSize = 16.sp,
-                            color = Gray500,
-                            modifier = Modifier.padding(start = 26.dp)
-                        )
-                    }
-
-                    // Invoice Status
-                    DetailCard(icon = "\uD83E\uDDFE", title = "Invoice Status") {
-                        Text(
-                            text = state.invoiceStatusText,
-                            fontSize = 16.sp,
-                            color = Gray500,
-                            modifier = Modifier.padding(start = 26.dp)
-                        )
-                    }
-
-                    // H&S Forms Required (heading always shown, badge only when hsForms is set)
-                    DetailCard(icon = "\uD83D\uDEE1\uFE0F", title = "H&S Forms Required") {
-                        if (state.showHsForm) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 26.dp, top = 8.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(state.hsFormColor))
-                                    .padding(horizontal = 15.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = state.hsFormText,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-
-                    // Feedback Section
+                    // ===== SECTION 7: Feedback =====
                     if (state.showFeedback) {
                         Card(
                             shape = RoundedCornerShape(15.dp),
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White)
                         ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text("\uD83D\uDCAC", fontSize = 18.sp)
-                                    Text(
-                                        "Feedback and Reviews",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Blue
-                                    )
+                                    Text("Feedback and Reviews", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Blue)
                                 }
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Text(
-                                    "Manager's Feedback:",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Gray500
-                                )
-                                Spacer(modifier = Modifier.height(5.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFFF0F8FF))
-                                        .padding(12.dp)
-                                ) {
-                                    Text(
-                                        text = shift.feedback,
-                                        fontSize = 14.sp,
-                                        color = Gray500
-                                    )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("Manager's Feedback:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFF0F8FF)).padding(12.dp)) {
+                                    Text(shift.feedback, fontSize = 14.sp, color = Gray500)
                                 }
-
                                 if (shift.contractorResponseToReview.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        "Contractor's Response:",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Gray500
-                                    )
-                                    Spacer(modifier = Modifier.height(5.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFFF0F8FF))
-                                            .padding(12.dp)
-                                    ) {
-                                        Text(
-                                            text = shift.contractorResponseToReview,
-                                            fontSize = 14.sp,
-                                            color = Gray500
-                                        )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text("Contractor's Response:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFF0F8FF)).padding(12.dp)) {
+                                        Text(shift.contractorResponseToReview, fontSize = 14.sp, color = Gray500)
                                     }
                                 }
                             }
                         }
                     }
-
-                    // Job Status
-                    DetailCard(icon = "\uD83D\uDCCA", title = "Job Status") {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(Color(state.statusColor))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = state.statusMessage,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
                 }
 
-                // Action Buttons Section
+                Spacer(modifier = Modifier.height(16.dp))
+            } // End scrollable content
+
+                // Sticky Bottom Action Buttons
                 ActionButtonsSection(
                     state = state,
                     onSendQuote = { onSendQuote(shift.id) },
@@ -459,12 +507,11 @@ fun ShiftDetailsScreen(
                     onStart = viewModel::startShift,
                     onEnd = viewModel::endShift,
                     onComplete = viewModel::completeShift,
+                    onMarkComplete = viewModel::markShiftComplete,
                     onReject = viewModel::rejectShift,
                     onReviews = viewModel::viewReviews
                 )
-
-                Spacer(modifier = Modifier.height(30.dp))
-            }
+            } // End outer Column
         }
     }
 }
@@ -764,14 +811,22 @@ private fun ActionButtonsSection(
     onStart: () -> Unit,
     onEnd: () -> Unit,
     onComplete: () -> Unit,
+    onMarkComplete: () -> Unit,
     onReject: () -> Unit,
     onReviews: () -> Unit
 ) {
+    // Check if any button is visible
+    val hasAnyButton = state.quotationButton || state.viewQuotationsButton ||
+            state.completeButton || state.markCompleteButton || state.rejectButton ||
+            state.reviewsButton || state.isUpdating
+    if (!hasAnyButton) return
+
     if (state.isUpdating) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .background(Color.White)
+                .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator()
@@ -779,72 +834,44 @@ private fun ActionButtonsSection(
         return
     }
 
-    Column(
-        modifier = Modifier.padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(15.dp)
+    // Sticky bottom bar with divider
+    HorizontalDivider(color = Color(0xFFE5E7EB))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Send Quote Button (Caregiver)
+        // Send Quote (Contractor)
         if (state.quotationButton) {
             ActionButton(text = "Send Quote", bgColor = Color.Black, onClick = onSendQuote)
         }
 
-        // View Quotations Button (Manager/Admin)
+        // View Quotations (Manager/Admin)
         if (state.viewQuotationsButton) {
             ActionButton(text = "View Quotations", bgColor = Color.Black, onClick = onViewQuotations)
         }
 
-        // Main Action Buttons Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (state.startButton) {
-                ActionButton(
-                    text = "Start",
-                    bgColor = Color.Black,
-                    onClick = onStart,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            if (state.endButton) {
-                ActionButton(
-                    text = "End",
-                    bgColor = Color.Black,
-                    onClick = onEnd,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            if (state.completeButton) {
-                ActionButton(
-                    text = "Complete",
-                    bgColor = Color.Black,
-                    onClick = onComplete,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        // Complete / Finish Job (Manager)
+        if (state.completeButton) {
+            ActionButton(text = "Complete", bgColor = Color.Black, onClick = onComplete)
         }
 
-        // Secondary Action Buttons Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (state.rejectButton) {
-                ActionButton(
-                    text = "Reject",
-                    bgColor = Color(0xFF8B0000),
-                    onClick = onReject,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            if (state.reviewsButton) {
-                ActionButton(
-                    text = "Reviews",
-                    bgColor = Color.Black,
-                    onClick = onReviews,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        // Mark Complete (Contractor)
+        if (state.markCompleteButton) {
+            ActionButton(text = "Mark Complete", bgColor = Color(0xFF007AFF), onClick = onMarkComplete)
+        }
+
+        // Reject (Contractor)
+        if (state.rejectButton) {
+            ActionButton(text = "Reject", bgColor = Color(0xFF8B0000), onClick = onReject)
+        }
+
+        // Reviews (hidden currently)
+        if (state.reviewsButton) {
+            ActionButton(text = "Reviews", bgColor = Color.Black, onClick = onReviews)
         }
     }
 }
@@ -868,5 +895,301 @@ private fun ActionButton(
             fontSize = 14.sp,
             color = Color.White
         )
+    }
+}
+
+// ========== Tracking UI Components ==========
+
+@Composable
+private fun TrackingStatusCard(trackingState: DoerTrackingState) {
+    val (statusText, statusColor) = when (trackingState) {
+        DoerTrackingState.IDLE -> "Ready" to Color(0xFF9CA3AF)
+        DoerTrackingState.CLOCKED_IN -> "Clocked In" to Color(0xFF007AFF)
+        DoerTrackingState.EN_ROUTE -> "On the Way" to Color(0xFF3B82F6)
+        DoerTrackingState.ARRIVED -> "Arrived" to Color(0xFF10B981)
+        DoerTrackingState.ON_SITE -> "On Site" to Color(0xFF00C875)
+        DoerTrackingState.LEAVING -> "Leaving Site" to Color(0xFFF59E0B)
+        DoerTrackingState.CLOCKED_OUT -> "Clocked Out" to Color(0xFF6B7280)
+    }
+
+    val animatedColor by animateColorAsState(targetValue = statusColor, label = "statusColor")
+
+    Card(
+        shape = RoundedCornerShape(15.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("\uD83D\uDCE1", fontSize = 18.sp)
+                Text(
+                    "Live Tracking",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Blue
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Status:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gray500)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(animatedColor)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            if (trackingState == DoerTrackingState.LEAVING) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Auto clock-out in 5 minutes if you don't return to site",
+                    fontSize = 12.sp,
+                    color = Color(0xFFF59E0B)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClockInOutSection(
+    showClockIn: Boolean,
+    showClockOut: Boolean,
+    selectedLocationType: ClockLocationType,
+    onSelectLocationType: (ClockLocationType) -> Unit,
+    availableStages: List<nz.co.doer.data.remote.dto.ShiftSubItemDto> = emptyList(),
+    selectedStageName: String = "",
+    onSelectStage: (String) -> Unit = {},
+    onClockIn: (latitude: Double, longitude: Double) -> Unit,
+    onClockOut: (latitude: Double, longitude: Double) -> Unit
+) {
+    val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    var showClockOutDialog by remember { mutableStateOf(false) }
+    var clockOutReason by remember { mutableStateOf("") }
+
+    // Location permission launcher
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        if (fineGranted) {
+            // Permission granted — retry clock in
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    if (location != null) {
+                        onClockIn(location.latitude, location.longitude)
+                    } else {
+                        onClockIn(0.0, 0.0)
+                    }
+                }
+            } catch (_: SecurityException) {
+                onClockIn(0.0, 0.0)
+            }
+        }
+    }
+
+    if (showClockOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showClockOutDialog = false },
+            title = { Text("Clock Out") },
+            text = {
+                Column {
+                    Text("Are you sure you want to clock out?")
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = clockOutReason,
+                        onValueChange = { clockOutReason = it },
+                        label = { Text("Reason (optional)") },
+                        placeholder = { Text("e.g., GPS drift, early departure") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClockOutDialog = false
+                    try {
+                        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                            onClockOut(
+                                location?.latitude ?: 0.0,
+                                location?.longitude ?: 0.0
+                            )
+                        }
+                    } catch (_: SecurityException) {
+                        onClockOut(0.0, 0.0)
+                    }
+                }) { Text("Clock Out", color = Color.Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClockOutDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Card(
+        shape = RoundedCornerShape(15.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("\u23F1\uFE0F", fontSize = 18.sp)
+                Text(
+                    "Clock In / Out",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Blue
+                )
+            }
+
+            if (showClockIn) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Where are you clocking in?",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Gray500
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Location type chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ClockLocationType.entries.forEach { type ->
+                        val label = when (type) {
+                            ClockLocationType.SITE -> "Site"
+                            ClockLocationType.YARD -> "Yard"
+                            ClockLocationType.OFFICE -> "Office"
+                        }
+                        FilterChip(
+                            selected = selectedLocationType == type,
+                            onClick = { onSelectLocationType(type) },
+                            label = { Text(label, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Blue,
+                                selectedLabelColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // Stage picker (if sub-items/stages exist)
+                if (availableStages.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Select Stage:",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Gray500
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        availableStages.forEach { stage ->
+                            FilterChip(
+                                selected = selectedStageName == stage.subitem,
+                                onClick = { onSelectStage(stage.subitem) },
+                                label = { Text(stage.subitem, fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF8B5CF6),
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Clock In button
+                Button(
+                    onClick = {
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (!hasPermission) {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                            return@Button
+                        }
+                        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                            if (location != null) {
+                                onClockIn(location.latitude, location.longitude)
+                            } else {
+                                onClockIn(0.0, 0.0)
+                            }
+                        }.addOnFailureListener {
+                            onClockIn(0.0, 0.0)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C875)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Text(
+                        text = "Clock In",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
+                }
+            }
+
+            if (showClockOut) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Clock Out button
+                Button(
+                    onClick = { showClockOutDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Text(
+                        text = "Clock Out",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
+                }
+            }
+        }
     }
 }

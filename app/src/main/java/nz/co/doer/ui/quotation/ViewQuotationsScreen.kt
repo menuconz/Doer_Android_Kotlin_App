@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -36,13 +37,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -81,6 +85,7 @@ fun ViewQuotationsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var hireConfirmQuotation by remember { mutableStateOf<nz.co.doer.data.remote.dto.JobQuotationDto?>(null) }
 
     LaunchedEffect(state.isHired) {
         if (state.isHired) onBack()
@@ -98,6 +103,28 @@ fun ViewQuotationsScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearSuccess()
         }
+    }
+
+    // Hire confirmation dialog
+    hireConfirmQuotation?.let { quotation ->
+        AlertDialog(
+            onDismissRequest = { hireConfirmQuotation = null },
+            title = { Text("Hire Contractor") },
+            text = { Text("Do you want to hire this contractor?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    hireConfirmQuotation = null
+                    viewModel.hireContractor(quotation)
+                }) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { hireConfirmQuotation = null }) {
+                    Text("No")
+                }
+            }
+        )
     }
 
     // Matching MAUI: FilterQuotationsPopupView as ModalBottomSheet
@@ -404,7 +431,7 @@ fun ViewQuotationsScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Button(
-                                            onClick = { viewModel.hireContractor(quotation) },
+                                            onClick = { hireConfirmQuotation = quotation },
                                             enabled = !state.isHiring,
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = Color.White,

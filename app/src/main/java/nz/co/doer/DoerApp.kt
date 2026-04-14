@@ -9,6 +9,8 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.google.firebase.FirebaseApp
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.OkHttpClient
 import nz.co.doer.data.local.PreferencesManager
@@ -16,9 +18,15 @@ import timber.log.Timber
 import javax.inject.Inject
 
 @HiltAndroidApp
-class DoerApp : Application(), SingletonImageLoader.Factory {
+class DoerApp : Application(), SingletonImageLoader.Factory, Configuration.Provider {
 
     @Inject lateinit var okHttpClient: OkHttpClient
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     override fun onCreate() {
         super.onCreate()

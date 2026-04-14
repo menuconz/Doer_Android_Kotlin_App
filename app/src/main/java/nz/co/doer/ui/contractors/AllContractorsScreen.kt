@@ -417,21 +417,29 @@ private fun SortableHeader(
         if (state.sortAscending) " \u25B2" else " \u25BC"
     } else ""
 
-    Box(
+    Row(
         modifier = Modifier
             .width(width)
             .height(40.dp)
             .border(1.dp, HeaderBorderColor)
             .clickable { onSort(column) }
             .padding(5.dp),
-        contentAlignment = Alignment.CenterStart
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "$title$sortIcon",
+            text = title,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
+        if (sortIcon.isNotBlank()) {
+            Text(
+                text = sortIcon.trim(),
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
     }
 }
 

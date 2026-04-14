@@ -15,11 +15,18 @@ class AuthInterceptor @Inject constructor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val token = runBlocking { preferencesManager.getBasicAuthUid() }
 
-        val request = chain.request().newBuilder().apply {
+        val originalRequest = chain.request()
+        val isMultipart = originalRequest.body?.contentType()?.type == "multipart"
+
+        val request = originalRequest.newBuilder().apply {
             if (token.isNotEmpty()) {
                 addHeader("Authorization", "Bearer $token")
             }
-            addHeader("Content-Type", "application/json")
+            // Don't override Content-Type for multipart requests (file uploads)
+            // OkHttp sets the correct multipart boundary automatically
+            if (!isMultipart) {
+                addHeader("Content-Type", "application/json")
+            }
             addHeader("Accept", "application/json")
         }.build()
 

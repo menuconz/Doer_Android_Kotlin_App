@@ -246,20 +246,17 @@ fun DayDetailScreen(
             // Filter Section
             FilterSection(state = state, viewModel = viewModel)
 
-            if (state.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (state.shiftRows.isEmpty()) {
+            Box(modifier = Modifier.weight(1f)) {
+            if (state.shiftRows.isEmpty() && !state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No projects for this day", color = Color.Gray, fontSize = 16.sp)
                 }
-            } else {
+            } else if (state.shiftRows.isNotEmpty()) {
                 val hScroll = rememberScrollState()
                 val vScroll = rememberScrollState()
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxSize()
                         .padding(horizontal = 15.dp)
                         .horizontalScroll(hScroll)
                         .verticalScroll(vScroll)
@@ -291,6 +288,18 @@ fun DayDetailScreen(
                     }
                 }
             }
+            // Loading overlay on top of content
+            if (state.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.White.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            } // Close outer Box
         }
     }
 }
@@ -311,7 +320,7 @@ private fun FilterSection(state: DayDetailUiState, viewModel: DayDetailViewModel
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Advanced Filters", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF333333))
-            Text(state.filterStatusText, fontSize = 13.sp, color = Color(0xFF666666))
+            Text(state.filterStatusText, fontSize = 13.sp, color = Color(0xFF333333))
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -743,7 +752,7 @@ private fun SubHeaderCell(text: String, width: Dp) {
             .width(width).height(45.dp)
             .border(0.5.dp, Color.Gray)
             .padding(10.dp, 0.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
         Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -811,7 +820,9 @@ private fun SubItemRow(
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
-                subItem.dateStartedString.ifBlank { "Not Started" },
+                subItem.dateStartedString.ifBlank {
+                    formatSubItemDate(subItem.dateStarted) ?: "Not Started"
+                },
                 fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF374151)
             )
         }
@@ -824,7 +835,9 @@ private fun SubItemRow(
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
-                subItem.dateCompletedString.ifBlank { "Not Completed" },
+                subItem.dateCompletedString.ifBlank {
+                    formatSubItemDate(subItem.dateCompleted) ?: "Not Completed"
+                },
                 fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF374151)
             )
         }
@@ -1098,4 +1111,26 @@ private fun OptionListDialog(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+private fun formatSubItemDate(dateStr: String?): String? {
+    if (dateStr.isNullOrBlank()) return null
+    return try {
+        val parsers = listOf(
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        )
+        val display = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", java.util.Locale.ENGLISH)
+        for (parser in parsers) {
+            try {
+                val parsed = java.time.LocalDateTime.parse(dateStr.trim(), parser)
+                return parsed.format(display)
+            } catch (_: Exception) {}
+        }
+        dateStr.take(10)
+    } catch (_: Exception) {
+        dateStr.take(10)
+    }
 }

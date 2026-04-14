@@ -23,6 +23,9 @@ mapsCompose = "6.2.1"
 playServicesLocation = "21.3.0"
 stripe = "22.8.0"
 timber = "5.0.1"
+room = "2.7.1"
+workManager = "2.10.0"
+navigationSdk = "6.2.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -73,6 +76,19 @@ coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp"
 
 # Stripe
 stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = "stripe" }
+
+# Room
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+
+# WorkManager
+work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
+hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref = "hiltNavigationCompose" }
+hilt-work-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "hiltNavigationCompose" }
+
+# Google Navigation SDK
+google-navigation = { group = "com.google.android.libraries.navigation", name = "navigation", version.ref = "navigationSdk" }
 
 # Logging
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }

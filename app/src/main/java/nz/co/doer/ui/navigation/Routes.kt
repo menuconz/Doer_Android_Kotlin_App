@@ -67,6 +67,11 @@ object Routes {
     // Team
     const val FILO_KRETO_TEAM = "filo_kreto_team"
 
+    // Tracking
+    const val LIVE_TRACKING = "live_tracking"
+    const val TIME_TRACKING = "time_tracking"
+    const val NAVIGATION_MAP = "navigation_map"
+
     // Misc
     const val CONTACT_US = "contact_us"
     const val VIEW_EMAIL_DOCUMENT = "view_email_document"

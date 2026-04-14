@@ -17,14 +17,14 @@ android {
         applicationId = "nz.co.doer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 62
-        versionName = "1.62"
+        versionCode = 63
+        versionName = "1.63"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "BASE_URL", "\"https://doerapi.doer.nz/api/\"")
-        buildConfigField("String", "MAPS_API_KEY", "\"AIzaSyA2yi5a-gBUHbkYvnc9rLiRoeUd5WONBMs\"")
-        manifestPlaceholders["MAPS_API_KEY"] = "AIzaSyA2yi5a-gBUHbkYvnc9rLiRoeUd5WONBMs"
+        buildConfigField("String", "MAPS_API_KEY", "\"AIzaSyDCmj86d3XA-GvAonJowP1ujnzCf7TDKAE\"")
+        manifestPlaceholders["MAPS_API_KEY"] = "AIzaSyDCmj86d3XA-GvAonJowP1ujnzCf7TDKAE"
         buildConfigField("String", "PAYMARK_URL", "\"https://uat.paymarkclick.co.nz/api/webpayments/paymentservice/rest/WPRequest\"")
     }
 
@@ -115,10 +115,14 @@ dependencies {
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.analytics)
 
-    // Maps
-    implementation(libs.maps.compose)
-    implementation(libs.play.services.maps)
+    // Maps (Navigation SDK bundles its own play-services-maps)
+    implementation(libs.maps.compose) {
+        exclude(group = "com.google.android.gms", module = "play-services-maps")
+    }
     implementation(libs.play.services.location)
+    configurations.all {
+        exclude(group = "com.google.android.gms", module = "play-services-maps")
+    }
 
     // Image Loading
     implementation(libs.coil.compose)
@@ -126,6 +130,22 @@ dependencies {
 
     // Stripe Payments
     implementation(libs.stripe.android)
+
+    // Room
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
+    // WorkManager
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
+
+    // AppCompat (for Navigation SDK Activity)
+    implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // Google Navigation SDK (turn-by-turn)
+    api(libs.google.navigation)
 
     // Logging
     implementation(libs.timber)
