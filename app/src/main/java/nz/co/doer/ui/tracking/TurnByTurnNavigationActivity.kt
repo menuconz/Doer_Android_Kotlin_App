@@ -32,6 +32,11 @@ class TurnByTurnNavigationActivity : AppCompatActivity() {
     private var arrivalListener: Navigator.ArrivalListener? = null
     private var routeChangedListener: Navigator.RouteChangedListener? = null
 
+    private val autoCloseHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val autoCloseRunnable = Runnable {
+        if (!isFinishing && !isDestroyed) finish()
+    }
+
     private var destLat: Double = 0.0
     private var destLng: Double = 0.0
     private var projectName: String = ""
@@ -122,7 +127,9 @@ class TurnByTurnNavigationActivity : AppCompatActivity() {
             Timber.d("Arrived at destination: $projectName")
             Toast.makeText(this, "You've arrived at $projectName!", Toast.LENGTH_LONG).show()
             navigator?.clearDestinations()
-            // Don't auto-finish — let user close manually
+            // Auto-close after 5 seconds if user hasn't pressed back themselves
+            autoCloseHandler.removeCallbacks(autoCloseRunnable)
+            autoCloseHandler.postDelayed(autoCloseRunnable, 5_000L)
         }
         navigator?.addArrivalListener(arrivalListener)
 
@@ -186,6 +193,21 @@ class TurnByTurnNavigationActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // Cancel the auto-close timer if it's still pending
+        autoCloseHandler.removeCallbacks(autoCloseRunnable)
+
+        // Stop simulator first (debug builds) so no further simulated fixes arrive
+        try {
+            if (BuildConfig.DEBUG) navigator?.simulator?.unsetUserLocation()
+        } catch (_: Exception) {}
+
+        // Stop voice guidance and clear destinations so nothing keeps running
+        try {
+            navigator?.setAudioGuidance(Navigator.AudioGuidance.SILENT)
+            navigator?.stopGuidance()
+            navigator?.clearDestinations()
+        } catch (_: Exception) {}
+
         arrivalListener?.let { navigator?.removeArrivalListener(it) }
         routeChangedListener?.let { navigator?.removeRouteChangedListener(it) }
         navigator?.cleanup()

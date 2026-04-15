@@ -20,6 +20,7 @@ import nz.co.doer.data.remote.dto.ClockLocationType
 import nz.co.doer.data.remote.dto.DoerTrackingState
 import nz.co.doer.data.remote.dto.LocationBatchDto
 import nz.co.doer.data.remote.dto.LocationPointDto
+import nz.co.doer.data.remote.dto.TrackingStatusDto
 import nz.co.doer.data.repository.LocationTrackingRepository
 import timber.log.Timber
 import java.time.LocalDateTime
@@ -76,6 +77,14 @@ class TrackingManager @Inject constructor(
     // Project name for notification messages
     private var activeProjectName: String = ""
 
+    // Last known location — used for status pushes between GPS samples
+    private var lastKnownLat: Double = 0.0
+    private var lastKnownLng: Double = 0.0
+
+    // Site coordinates for distance-remaining calculation during EN_ROUTE
+    private var activeSiteLat: Double? = null
+    private var activeSiteLng: Double? = null
+
     /**
      * Clock in at a location. This is the entry point for tracking.
      */
@@ -88,11 +97,16 @@ class TrackingManager @Inject constructor(
         currentLongitude: Double,
         projectName: String = ""
     ) {
-        if (!transitionTo(DoerTrackingState.CLOCKED_IN)) return
-
+        // Stage session state before transition so status pushes have context
         _activeShiftId.value = shiftId
         _clockLocationType.value = locationType
         activeProjectName = projectName
+        activeSiteLat = siteLatitude
+        activeSiteLng = siteLongitude
+        updateLastKnownLocation(currentLatitude, currentLongitude)
+
+        if (!transitionTo(DoerTrackingState.CLOCKED_IN)) return
+        pushTrackingStatus()
 
         // Record clock-in event
         recordClockEvent(
@@ -118,17 +132,20 @@ class TrackingManager @Inject constructor(
             if (distanceToSite <= GeofenceManager.DEFAULT_GEOFENCE_RADIUS) {
                 // Already at site — go directly to ON_SITE
                 transitionTo(DoerTrackingState.ON_SITE)
+                pushTrackingStatus()
                 startOnSiteMonitoring()
                 startLocationService(TrackingMode.ON_SITE)
             } else {
                 // Need to travel — go to EN_ROUTE
                 transitionTo(DoerTrackingState.EN_ROUTE)
+                pushTrackingStatus()
                 notificationHelper.onEnRoute(shiftId, currentLatitude, currentLongitude)
                 startLocationService(TrackingMode.EN_ROUTE)
             }
         } else {
             // Yard/Office — directly ON_SITE (no navigation needed)
             transitionTo(DoerTrackingState.ON_SITE)
+            pushTrackingStatus()
             startOnSiteMonitoring()
             startLocationService(TrackingMode.ON_SITE)
         }
@@ -144,7 +161,12 @@ class TrackingManager @Inject constructor(
     ) {
         val shiftId = _activeShiftId.value ?: return
 
+        if (currentLatitude != 0.0 || currentLongitude != 0.0) {
+            updateLastKnownLocation(currentLatitude, currentLongitude)
+        }
+
         transitionTo(DoerTrackingState.CLOCKED_OUT)
+        pushTrackingStatus()
 
         // Stop threshold monitor
         stopOnSiteMonitoring()
@@ -170,6 +192,8 @@ class TrackingManager @Inject constructor(
 
         _activeShiftId.value = null
         activeProjectName = ""
+        activeSiteLat = null
+        activeSiteLng = null
         _trackingState.value = DoerTrackingState.IDLE
     }
 
@@ -178,16 +202,19 @@ class TrackingManager @Inject constructor(
      */
     fun onGeofenceEnter(shiftId: Int, latitude: Double, longitude: Double) {
         if (_activeShiftId.value != shiftId) return
+        updateLastKnownLocation(latitude, longitude)
         val currentState = _trackingState.value
 
         if (currentState == DoerTrackingState.EN_ROUTE) {
             transitionTo(DoerTrackingState.ARRIVED)
+            pushTrackingStatus()
             recordClockEvent(shiftId, ClockEventType.GEOFENCE_ENTER, latitude, longitude)
             notificationHelper.onArrived(shiftId, latitude, longitude, activeProjectName)
             updateLocationServiceMode(TrackingMode.ON_SITE)
         } else if (currentState == DoerTrackingState.LEAVING) {
             // Re-entered within grace period — back to ON_SITE
             transitionTo(DoerTrackingState.ON_SITE)
+            pushTrackingStatus()
             leaveTimestamp = 0L
             // Resume threshold monitoring (don't reset timer — time continues)
         }
@@ -198,9 +225,11 @@ class TrackingManager @Inject constructor(
      */
     fun onGeofenceDwell(shiftId: Int, latitude: Double, longitude: Double) {
         if (_activeShiftId.value != shiftId) return
+        updateLastKnownLocation(latitude, longitude)
 
         if (_trackingState.value == DoerTrackingState.ARRIVED) {
             transitionTo(DoerTrackingState.ON_SITE)
+            pushTrackingStatus()
             recordClockEvent(shiftId, ClockEventType.STATE_CHANGE, latitude, longitude)
             startOnSiteMonitoring()
         }
@@ -211,10 +240,12 @@ class TrackingManager @Inject constructor(
      */
     fun onGeofenceExit(shiftId: Int, latitude: Double, longitude: Double) {
         if (_activeShiftId.value != shiftId) return
+        updateLastKnownLocation(latitude, longitude)
         val currentState = _trackingState.value
 
         if (currentState == DoerTrackingState.ON_SITE || currentState == DoerTrackingState.ARRIVED) {
             transitionTo(DoerTrackingState.LEAVING)
+            pushTrackingStatus()
             leaveTimestamp = System.currentTimeMillis()
             recordClockEvent(shiftId, ClockEventType.GEOFENCE_EXIT, latitude, longitude)
             notificationHelper.onLeftSite(shiftId, latitude, longitude, activeProjectName)
@@ -241,10 +272,60 @@ class TrackingManager @Inject constructor(
      * Add a location point to the batch. Called by LocationTrackingService.
      */
     fun addLocationPoint(point: LocationPointDto) {
+        updateLastKnownLocation(point.latitude, point.longitude)
         synchronized(batchLock) {
             locationBatch.add(point)
             if (locationBatch.size >= BATCH_SIZE) {
                 flushLocationBatch()
+            }
+        }
+    }
+
+    private fun updateLastKnownLocation(latitude: Double, longitude: Double) {
+        if (latitude == 0.0 && longitude == 0.0) return
+        lastKnownLat = latitude
+        lastKnownLng = longitude
+    }
+
+    /**
+     * Push a snapshot of the current tracking state to the server so the manager
+     * live-map reflects state transitions (IDLE → EN_ROUTE → ARRIVED → ON_SITE …)
+     * in near real time. Called after every state change in this manager.
+     */
+    private fun pushTrackingStatus() {
+        val shiftId = _activeShiftId.value ?: return
+        val state = _trackingState.value
+        val siteLat = activeSiteLat
+        val siteLng = activeSiteLng
+        val lat = lastKnownLat
+        val lng = lastKnownLng
+
+        val distanceRemainingMeters: Double? =
+            if (state == DoerTrackingState.EN_ROUTE && siteLat != null && siteLng != null
+                && lat != 0.0 && lng != 0.0
+            ) {
+                distanceBetween(lat, lng, siteLat, siteLng).toDouble()
+            } else null
+
+        scope.launch {
+            try {
+                val dto = TrackingStatusDto(
+                    userId = preferencesManager.getUserId(),
+                    shiftId = shiftId,
+                    trackingState = state.value,
+                    latitude = lat,
+                    longitude = lng,
+                    timestamp = nowUtc(),
+                    eta = null,
+                    distanceRemaining = distanceRemainingMeters,
+                    siteLatitude = siteLat,
+                    siteLongitude = siteLng,
+                    basicAuthUid = preferencesManager.getBasicAuthUid()
+                )
+                locationTrackingRepository.updateTrackingStatus(dto)
+                Timber.d("Pushed tracking status: state=$state, shiftId=$shiftId")
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to push tracking status for shift $shiftId (state=$state)")
             }
         }
     }

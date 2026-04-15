@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.appcompat.app.AppCompatDelegate
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
@@ -30,6 +31,9 @@ class DoerApp : Application(), SingletonImageLoader.Factory, Configuration.Provi
 
     override fun onCreate() {
         super.onCreate()
+
+        // Force light mode regardless of system setting
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
 
         // Initialize Timber for logging
         if (BuildConfig.DEBUG) {

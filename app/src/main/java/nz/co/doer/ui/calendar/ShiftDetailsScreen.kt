@@ -2,6 +2,7 @@ package nz.co.doer.ui.calendar
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -55,12 +57,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -984,26 +990,136 @@ private fun ClockInOutSection(
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
     var showClockOutDialog by remember { mutableStateOf(false) }
     var clockOutReason by remember { mutableStateOf("") }
+    var showForegroundLocationDisclosure by remember { mutableStateOf(false) }
+    var showBackgroundLocationDisclosure by remember { mutableStateOf(false) }
 
-    // Location permission launcher
+    // Reactive permission state — recomputed on resume so returning from Settings updates the banner
+    var hasBackgroundLocation by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasBackgroundLocation = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun proceedClockInWithLastLocation() {
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                onClockIn(location?.latitude ?: 0.0, location?.longitude ?: 0.0)
+            }.addOnFailureListener {
+                onClockIn(0.0, 0.0)
+            }
+        } catch (_: SecurityException) {
+            onClockIn(0.0, 0.0)
+        }
+    }
+
+    // Background location permission launcher (Android 10+ requires a separate request)
+    val backgroundLocationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasBackgroundLocation = granted
+        proceedClockInWithLastLocation()
+    }
+
+    // Foreground location permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         if (fineGranted) {
-            // Permission granted — retry clock in
-            try {
-                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                    if (location != null) {
-                        onClockIn(location.latitude, location.longitude)
-                    } else {
-                        onClockIn(0.0, 0.0)
-                    }
-                }
-            } catch (_: SecurityException) {
-                onClockIn(0.0, 0.0)
+            val needsBackground = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+            if (needsBackground) {
+                showBackgroundLocationDisclosure = true
+            } else {
+                proceedClockInWithLastLocation()
             }
         }
+    }
+
+    if (showForegroundLocationDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showForegroundLocationDisclosure = false },
+            title = { Text("Location access required") },
+            text = {
+                Text(
+                    "Doer collects location data to track your shift, record the route " +
+                    "to the job site, enable turn-by-turn navigation, and automatically " +
+                    "clock you in and out via geofences at customer sites.\n\n" +
+                    "Location is used only while you are clocked in. A persistent " +
+                    "notification will be shown the whole time, and tracking stops " +
+                    "as soon as you clock out."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showForegroundLocationDisclosure = false
+                    locationPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForegroundLocationDisclosure = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showBackgroundLocationDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showBackgroundLocationDisclosure = false },
+            title = { Text("Allow background location") },
+            text = {
+                Text(
+                    "To keep tracking your shift accurately when the phone is locked " +
+                    "or you are using another app, Doer needs permission to access " +
+                    "location in the background.\n\n" +
+                    "On the next screen, please choose \"Allow all the time\".\n\n" +
+                    "Background tracking runs only while you are clocked in and stops " +
+                    "the moment you clock out."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBackgroundLocationDisclosure = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        backgroundLocationLauncher.launch(
+                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                        )
+                    } else {
+                        proceedClockInWithLastLocation()
+                    }
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showBackgroundLocationDisclosure = false
+                    proceedClockInWithLastLocation()
+                }) { Text("Not now") }
+            }
+        )
     }
 
     if (showClockOutDialog) {
@@ -1130,30 +1246,63 @@ private fun ClockInOutSection(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Background location warning banner — tracking works worse if user picked "While using the app"
+                if (!hasBackgroundLocation) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showBackgroundLocationDisclosure = true },
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFB25E02)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Background location is off",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color(0xFF663900)
+                                )
+                                Text(
+                                    "Doer can't track your shift when the phone is locked or you're " +
+                                        "in another app. Tap to enable \"Allow all the time\".",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF663900)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
                 // Clock In button
                 Button(
                     onClick = {
-                        val hasPermission = ContextCompat.checkSelfPermission(
+                        val hasFine = ContextCompat.checkSelfPermission(
                             context, Manifest.permission.ACCESS_FINE_LOCATION
                         ) == PackageManager.PERMISSION_GRANTED
-                        if (!hasPermission) {
-                            locationPermissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                            )
+                        if (!hasFine) {
+                            showForegroundLocationDisclosure = true
                             return@Button
                         }
-                        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                            if (location != null) {
-                                onClockIn(location.latitude, location.longitude)
-                            } else {
-                                onClockIn(0.0, 0.0)
-                            }
-                        }.addOnFailureListener {
-                            onClockIn(0.0, 0.0)
+                        val needsBackground = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                            ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                            ) != PackageManager.PERMISSION_GRANTED
+                        if (needsBackground) {
+                            showBackgroundLocationDisclosure = true
+                            return@Button
                         }
+                        proceedClockInWithLastLocation()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C875)),
                     shape = RoundedCornerShape(12.dp),

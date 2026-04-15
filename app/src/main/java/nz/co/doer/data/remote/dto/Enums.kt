@@ -172,7 +172,7 @@ enum class DoerTrackingState(val value: Int) {
             IDLE -> setOf(CLOCKED_IN)
             CLOCKED_IN -> setOf(EN_ROUTE, ON_SITE, CLOCKED_OUT) // EN_ROUTE if heading to site, ON_SITE if already at yard/office
             EN_ROUTE -> setOf(ARRIVED, CLOCKED_OUT) // ARRIVED via geofence, CLOCKED_OUT for manual override
-            ARRIVED -> setOf(ON_SITE, CLOCKED_OUT)
+            ARRIVED -> setOf(ON_SITE, LEAVING, CLOCKED_OUT) // LEAVING if user exits before DWELL confirms
             ON_SITE -> setOf(LEAVING, CLOCKED_OUT)
             LEAVING -> setOf(ON_SITE, CLOCKED_OUT) // ON_SITE if re-enters within grace period
             CLOCKED_OUT -> setOf(CLOCKED_IN) // Can clock in again at a new site

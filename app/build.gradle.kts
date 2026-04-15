@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -9,6 +11,13 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
 }
 
+// Load secrets from local.properties (gitignored) — falls back to empty string if missing
+val localProperties = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) localFile.inputStream().use { load(it) }
+}
+val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
+
 android {
     namespace = "nz.co.doer"
     compileSdk = 35
@@ -17,14 +26,14 @@ android {
         applicationId = "nz.co.doer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 63
-        versionName = "1.63"
+        versionCode = 65
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "BASE_URL", "\"https://doerapi.doer.nz/api/\"")
-        buildConfigField("String", "MAPS_API_KEY", "\"AIzaSyDCmj86d3XA-GvAonJowP1ujnzCf7TDKAE\"")
-        manifestPlaceholders["MAPS_API_KEY"] = "AIzaSyDCmj86d3XA-GvAonJowP1ujnzCf7TDKAE"
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         buildConfigField("String", "PAYMARK_URL", "\"https://uat.paymarkclick.co.nz/api/webpayments/paymentservice/rest/WPRequest\"")
     }
 

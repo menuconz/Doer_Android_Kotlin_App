@@ -38,7 +38,13 @@
       "Bash(grep -E \"\\\\.swift$\")",
       "Bash(find D:\\\\Doer_Android_Kotlin_App\\\\Doer_iOS_Swift_App-main\\\\Doer:*)",
       "Bash(grep -E \"\\\\.\\(swift|m\\)$\")",
-      "Bash(grep -n \"//.*Start\\\\|//.*End\\\\|Commented\\\\|commented\" \"D:\\\\Doer_Android_Kotlin_App\\\\app\\\\src\\\\main\\\\java\\\\nz\\\\co\\\\doer\\\\ui\\\\calendar\\\\ShiftDetailsScreen.kt\")"
+      "Bash(grep -n \"//.*Start\\\\|//.*End\\\\|Commented\\\\|commented\" \"D:\\\\Doer_Android_Kotlin_App\\\\app\\\\src\\\\main\\\\java\\\\nz\\\\co\\\\doer\\\\ui\\\\calendar\\\\ShiftDetailsScreen.kt\")",
+      "Bash(find:*)",
+      "Bash(xargs cat:*)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(grep -r \"^\\\\s*//.*[a-zA-Z0-9_].*=\" /d/Doer_Android_Kotlin_App/app/src/main/java/nz/co/doer/ui --include=\"*.kt\")",
+      "Bash(grep:*)",
+      "Bash(awk '{print $4}')"
     ]
   }
 }

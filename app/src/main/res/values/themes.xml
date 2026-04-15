@@ -3,6 +3,7 @@
     <style name="Theme.DoerAndroid" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">#667685</item>
         <item name="android:navigationBarColor">#667685</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
     <style name="Theme.DoerAndroid.Splash" parent="Theme.DoerAndroid">
