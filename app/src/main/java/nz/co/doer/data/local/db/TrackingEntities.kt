@@ -18,6 +18,8 @@ data class PendingClockEventEntity(
     val longitude: Double,
     val timestamp: String,
     val reasonCode: String?,
+    val subItemId: Int? = null,
+    val subItemName: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val synced: Boolean = false,
     val syncAttempts: Int = 0,

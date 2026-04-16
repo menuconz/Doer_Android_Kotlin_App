@@ -361,9 +361,18 @@ fun DoerNavHost(
                 )
             }
 
-            composable("${Routes.SHIFT_DETAILS}/{shiftId}") {
+            composable("${Routes.SHIFT_DETAILS}/{shiftId}") { backStackEntry ->
+                // Refresh the shift details when returning from Send Feedback / Reviews etc.
+                val shiftUpdated by backStackEntry.savedStateHandle
+                    .getStateFlow("shiftUpdated", false).collectAsState()
+                LaunchedEffect(shiftUpdated) {
+                    if (shiftUpdated) {
+                        backStackEntry.savedStateHandle["shiftUpdated"] = false
+                    }
+                }
                 ShiftDetailsScreen(
                     onBack = { navController.popBackStack() },
+                    refreshKey = shiftUpdated,
                     onEdit = { shiftId ->
                         navController.navigate("${Routes.EDIT_SHIFT}/$shiftId")
                     },
@@ -454,14 +463,22 @@ fun DoerNavHost(
             composable("${Routes.SEND_FEEDBACK}/{shiftId}") {
                 SendFeedbackScreen(
                     onBack = { navController.popBackStack() },
-                    onSuccess = { navController.popBackStack() }
+                    onSuccess = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle?.set("shiftUpdated", true)
+                        navController.popBackStack()
+                    }
                 )
             }
 
             composable("${Routes.REVIEWS}/{shiftId}") {
                 ReviewsScreen(
                     onBack = { navController.popBackStack() },
-                    onSuccess = { navController.popBackStack() }
+                    onSuccess = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle?.set("shiftUpdated", true)
+                        navController.popBackStack()
+                    }
                 )
             }
 

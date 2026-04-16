@@ -261,7 +261,8 @@ fun TimeTrackingDashboardScreen(
                                 editClockOut = if (doer.clockOutTime.isNotBlank()) doer.clockOutTime.takeLast(8).take(5) else ""
                                 editReason = ""
                                 editingDoer = doer
-                            }
+                            },
+                            onToggleDoer = { shiftId, userId -> viewModel.toggleDoerExpanded(shiftId, userId) }
                         )
                     }
                 }
@@ -325,8 +326,8 @@ private fun SummaryStatsRow(
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         SummaryStatItem("Sites", totalSites.toString(), Blue)
-        SummaryStatItem("Doers", totalDoers.toString(), Color(0xFF8B5CF6))
-        SummaryStatItem("Hours", String.format("%.1f", totalHours), Green)
+        SummaryStatItem("Contractors", totalDoers.toString(), Color(0xFF8B5CF6))
+        SummaryStatItem("Hours", formatHoursAndMinutes(totalHours), Green)
         if (alertCount > 0) {
             SummaryStatItem("Alerts", alertCount.toString(), Red)
         }
@@ -339,7 +340,7 @@ private fun SummaryStatItem(label: String, value: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
-            fontSize = 20.sp,
+            fontSize = if (value.length > 4) 14.sp else 20.sp,
             fontWeight = FontWeight.Bold,
             color = color
         )
@@ -351,11 +352,23 @@ private fun SummaryStatItem(label: String, value: String, color: Color) {
     }
 }
 
+/**
+ * Formats total hours as "Xh Ym" (e.g. 0.5 → "0h 30m", 48 → "48h 0m").
+ * Multi-day totals stay in hours rather than being split into days.
+ */
+private fun formatHoursAndMinutes(totalHours: Double): String {
+    val totalMinutes = (totalHours * 60).toInt()
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return "${hours}h ${minutes}m"
+}
+
 @Composable
 private fun SiteHoursCard(
     site: SiteHoursUi,
     onToggleExpand: () -> Unit,
-    onEditDoer: (DoerHoursUi) -> Unit = {}
+    onEditDoer: (DoerHoursUi) -> Unit = {},
+    onToggleDoer: (shiftId: Int, userId: String) -> Unit = { _, _ -> }
 ) {
     val borderColor = when {
         site.isOverThreshold -> Red
@@ -497,16 +510,16 @@ private fun SiteHoursCard(
 
                     HorizontalDivider(color = Color(0xFFE5E7EB))
 
-                    // Doer hours section
+                    // Contractor hours section
                     Text(
-                        "Doer Hours",
+                        "Contractor Hours",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = Blue
                     )
                     if (site.doerHours.isEmpty()) {
                         Text(
-                            "No doer data available",
+                            "No contractor data available",
                             fontSize = 13.sp,
                             color = Color(0xFFD1D5DB)
                         )
@@ -514,7 +527,8 @@ private fun SiteHoursCard(
                         site.doerHours.forEach { doer ->
                             DoerHoursRow(
                                 doer = doer,
-                                onEdit = onEditDoer
+                                onEdit = onEditDoer,
+                                onToggleExpand = { onToggleDoer(site.shiftId, doer.userId) }
                             )
                         }
                     }
@@ -558,18 +572,27 @@ private fun StageRow(stage: StageHoursUi) {
 }
 
 @Composable
-private fun DoerHoursRow(doer: DoerHoursUi, onEdit: (DoerHoursUi) -> Unit = {}) {
+private fun DoerHoursRow(
+    doer: DoerHoursUi,
+    onEdit: (DoerHoursUi) -> Unit = {},
+    onToggleExpand: () -> Unit = {}
+) {
     val hoursColor = when {
         doer.isOverThreshold -> Red
         doer.totalHours >= 11.0 -> Amber
         else -> Green
     }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(Color.White)
+    ) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggleExpand)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -623,24 +646,48 @@ private fun DoerHoursRow(doer: DoerHoursUi, onEdit: (DoerHoursUi) -> Unit = {}) 
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (doer.stage.isNotBlank()) {
-                    Text(doer.stage, fontSize = 11.sp, color = Gray500)
-                    Text("\u2022", fontSize = 9.sp, color = Gray500)
-                }
-                if (doer.clockInTime.isNotBlank()) {
-                    Text(
-                        "In: ${doer.clockInTime.takeLast(8).take(5)}",
-                        fontSize = 11.sp,
-                        color = Gray500
-                    )
-                }
-                if (doer.clockOutTime.isNotBlank()) {
-                    Text(
-                        "Out: ${doer.clockOutTime.takeLast(8).take(5)}",
-                        fontSize = 11.sp,
-                        color = Gray500
-                    )
+            // Stage on its own line (can be long, so let it ellipsize cleanly)
+            if (doer.stage.isNotBlank()) {
+                Text(
+                    text = doer.stage,
+                    fontSize = 11.sp,
+                    color = Gray500,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            // Multi-session: show "N sessions across M days" summary
+            // Single session: show "In: HH:mm • Out: HH:mm"
+            if (doer.sessions.size > 1) {
+                val distinctDays = doer.sessions.map { it.date }.distinct().size
+                Text(
+                    text = "${doer.sessions.size} sessions across $distinctDays " +
+                        if (distinctDays == 1) "day" else "days",
+                    fontSize = 11.sp,
+                    color = Gray500,
+                    maxLines = 1
+                )
+            } else if (doer.clockInTime.isNotBlank() || doer.clockOutTime.isNotBlank()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (doer.clockInTime.isNotBlank()) {
+                        Text(
+                            text = "In: ${doer.clockInTime.takeLast(8).take(5)}",
+                            fontSize = 11.sp,
+                            color = Gray500,
+                            maxLines = 1
+                        )
+                    }
+                    if (doer.clockInTime.isNotBlank() && doer.clockOutTime.isNotBlank()) {
+                        Text("\u2022", fontSize = 9.sp, color = Gray500)
+                    }
+                    if (doer.clockOutTime.isNotBlank()) {
+                        Text(
+                            text = "Out: ${doer.clockOutTime.takeLast(8).take(5)}",
+                            fontSize = 11.sp,
+                            color = Gray500,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -674,5 +721,77 @@ private fun DoerHoursRow(doer: DoerHoursUi, onEdit: (DoerHoursUi) -> Unit = {}) 
                 color = hoursColor
             )
         }
+
+        // Expand chevron — only show when sessions exist
+        if (doer.sessions.isNotEmpty()) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = if (doer.isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (doer.isExpanded) "Collapse" else "Expand",
+                tint = Gray500,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    } // end top Row
+
+    // Sessions breakdown (expanded)
+    AnimatedVisibility(
+        visible = doer.isExpanded && doer.sessions.isNotEmpty(),
+        enter = expandVertically(),
+        exit = shrinkVertically()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(BgColor)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            doer.sessions.forEach { session -> SessionRow(session) }
+        }
+    }
+    } // end outer Column
+}
+
+@Composable
+private fun SessionRow(session: SessionUi) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = session.displayDate,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF1F2937),
+            modifier = Modifier.width(85.dp)
+        )
+        Text(
+            text = if (session.clockOutTime.isEmpty()) {
+                "In: ${session.clockInTime} • Out: —"
+            } else {
+                "In: ${session.clockInTime} • Out: ${session.clockOutTime}"
+            },
+            fontSize = 11.sp,
+            color = Gray500,
+            modifier = Modifier.weight(1f)
+        )
+        if (session.isActive) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(Green)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+        Text(
+            text = session.hoursFormatted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF1F2937)
+        )
     }
 }

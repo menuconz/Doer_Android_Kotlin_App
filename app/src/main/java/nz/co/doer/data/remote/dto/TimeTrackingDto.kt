@@ -30,6 +30,20 @@ data class DoerHoursDto(
     @SerialName("clockOutTime") val clockOutTime: String? = null,
     @SerialName("totalHours") val totalHours: Double = 0.0,
     @SerialName("stage") val stage: String = "",
+    @SerialName("isActive") val isActive: Boolean = false,
+    @SerialName("sessions") val sessions: List<SessionDto> = emptyList()
+)
+
+/**
+ * One clock-in → clock-out session. A doer may have many across a multi-day shift.
+ */
+@Serializable
+data class SessionDto(
+    @SerialName("date") val date: String = "",
+    @SerialName("clockInTime") val clockInTime: String = "",
+    @SerialName("clockOutTime") val clockOutTime: String? = null,
+    @SerialName("hours") val hours: Double = 0.0,
+    @SerialName("stage") val stage: String = "",
     @SerialName("isActive") val isActive: Boolean = false
 )
 

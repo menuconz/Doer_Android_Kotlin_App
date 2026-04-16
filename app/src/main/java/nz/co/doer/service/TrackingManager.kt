@@ -85,6 +85,10 @@ class TrackingManager @Inject constructor(
     private var activeSiteLat: Double? = null
     private var activeSiteLng: Double? = null
 
+    // Selected sub-item / stage for the active shift (for per-stage hours reporting)
+    private var activeSubItemId: Int? = null
+    private var activeSubItemName: String? = null
+
     /**
      * Clock in at a location. This is the entry point for tracking.
      */
@@ -95,7 +99,9 @@ class TrackingManager @Inject constructor(
         siteLongitude: Double?,
         currentLatitude: Double,
         currentLongitude: Double,
-        projectName: String = ""
+        projectName: String = "",
+        subItemId: Int? = null,
+        subItemName: String? = null
     ) {
         // Stage session state before transition so status pushes have context
         _activeShiftId.value = shiftId
@@ -103,10 +109,14 @@ class TrackingManager @Inject constructor(
         activeProjectName = projectName
         activeSiteLat = siteLatitude
         activeSiteLng = siteLongitude
+        activeSubItemId = subItemId?.takeIf { it != 0 }
+        activeSubItemName = subItemName?.takeIf { it.isNotBlank() }
         updateLastKnownLocation(currentLatitude, currentLongitude)
 
         if (!transitionTo(DoerTrackingState.CLOCKED_IN)) return
-        pushTrackingStatus()
+        // Note: do NOT push status here — we'll transition immediately to EN_ROUTE or
+        // ON_SITE below and push the FINAL state once. Pushing twice in quick succession
+        // races on the server and can leave Live Tracking stuck on "Clocked In".
 
         // Record clock-in event
         recordClockEvent(
@@ -119,18 +129,19 @@ class TrackingManager @Inject constructor(
         // Notify manager
         notificationHelper.onClockIn(shiftId, currentLatitude, currentLongitude, projectName)
 
-        // Register geofence at site if heading to a site with valid coordinates
-        if (locationType == ClockLocationType.SITE && siteLatitude != null && siteLongitude != null
+        // Register geofence at the shift's location regardless of Site/Yard/Office —
+        // the shift's coordinates are always the destination the worker is travelling to.
+        if (siteLatitude != null && siteLongitude != null
             && siteLatitude != 0.0 && siteLongitude != 0.0
         ) {
             geofenceManager.registerSiteGeofence(shiftId, siteLatitude, siteLongitude)
 
-            // Check if Doer is already at the site (within geofence radius)
+            // Check if Doer is already at the destination (within geofence radius)
             val distanceToSite = distanceBetween(
                 currentLatitude, currentLongitude, siteLatitude, siteLongitude
             )
             if (distanceToSite <= GeofenceManager.DEFAULT_GEOFENCE_RADIUS) {
-                // Already at site — go directly to ON_SITE
+                // Already on-site — go directly to ON_SITE
                 transitionTo(DoerTrackingState.ON_SITE)
                 pushTrackingStatus()
                 startOnSiteMonitoring()
@@ -143,7 +154,8 @@ class TrackingManager @Inject constructor(
                 startLocationService(TrackingMode.EN_ROUTE)
             }
         } else {
-            // Yard/Office — directly ON_SITE (no navigation needed)
+            // No coordinates available on the shift — cannot register a geofence.
+            // Fall through to ON_SITE directly (trust-based).
             transitionTo(DoerTrackingState.ON_SITE)
             pushTrackingStatus()
             startOnSiteMonitoring()
@@ -194,6 +206,8 @@ class TrackingManager @Inject constructor(
         activeProjectName = ""
         activeSiteLat = null
         activeSiteLng = null
+        activeSubItemId = null
+        activeSubItemName = null
         _trackingState.value = DoerTrackingState.IDLE
     }
 
@@ -440,7 +454,9 @@ class TrackingManager @Inject constructor(
     ) {
         scope.launch {
             try {
-                // Offline-first: write to Room, then sync
+                // Offline-first: write to Room, then sync.
+                // Stage is attached to every event for this shift so the server can
+                // fall back to non-CLOCK_IN events if needed.
                 offlineSyncManager.queueClockEvent(
                     userId = preferencesManager.getUserId(),
                     shiftId = shiftId,
@@ -450,7 +466,9 @@ class TrackingManager @Inject constructor(
                     latitude = latitude,
                     longitude = longitude,
                     timestamp = nowUtc(),
-                    reasonCode = reasonCode
+                    reasonCode = reasonCode,
+                    subItemId = activeSubItemId,
+                    subItemName = activeSubItemName
                 )
                 Timber.d("Clock event queued: ${eventType.value} for shift $shiftId")
             } catch (e: Exception) {

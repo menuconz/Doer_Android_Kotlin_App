@@ -192,6 +192,19 @@ class TurnByTurnNavigationActivity : AppCompatActivity() {
         }
     }
 
+    override fun onBackPressed() {
+        // Stop voice + simulator immediately so nothing keeps running while the
+        // activity transitions away; onDestroy will run the full cleanup below.
+        autoCloseHandler.removeCallbacks(autoCloseRunnable)
+        try {
+            if (BuildConfig.DEBUG) navigator?.simulator?.unsetUserLocation()
+            navigator?.setAudioGuidance(Navigator.AudioGuidance.SILENT)
+            navigator?.stopGuidance()
+            navigator?.clearDestinations()
+        } catch (_: Exception) {}
+        super.onBackPressed()
+    }
+
     override fun onDestroy() {
         // Cancel the auto-close timer if it's still pending
         autoCloseHandler.removeCallbacks(autoCloseRunnable)

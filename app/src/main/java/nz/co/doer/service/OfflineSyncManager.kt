@@ -60,7 +60,9 @@ class OfflineSyncManager @Inject constructor(
         latitude: Double,
         longitude: Double,
         timestamp: String,
-        reasonCode: String? = null
+        reasonCode: String? = null,
+        subItemId: Int? = null,
+        subItemName: String? = null
     ) {
         val entity = PendingClockEventEntity(
             userId = userId,
@@ -71,7 +73,9 @@ class OfflineSyncManager @Inject constructor(
             latitude = latitude,
             longitude = longitude,
             timestamp = timestamp,
-            reasonCode = reasonCode
+            reasonCode = reasonCode,
+            subItemId = subItemId,
+            subItemName = subItemName
         )
         dao.insertClockEvent(entity)
         Timber.d("Clock event queued: $eventType for shift $shiftId")
@@ -199,6 +203,8 @@ class OfflineSyncManager @Inject constructor(
                     timestamp = event.timestamp,
                     reasonCode = event.reasonCode,
                     isOffline = true,
+                    subItemId = event.subItemId,
+                    subItemName = event.subItemName,
                     lId = 1,
                     siteId = 1,
                     basicAuthUid = basicAuthUid

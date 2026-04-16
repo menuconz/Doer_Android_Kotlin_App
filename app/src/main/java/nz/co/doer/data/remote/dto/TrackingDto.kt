@@ -16,6 +16,8 @@ data class ClockEventDto(
     @SerialName("timestamp") val timestamp: String = "",
     @SerialName("reasonCode") val reasonCode: String? = null,
     @SerialName("isOffline") val isOffline: Boolean = false,
+    @SerialName("subItemId") val subItemId: Int? = null,
+    @SerialName("subItemName") val subItemName: String? = null,
     // EntityBase fields
     @SerialName("lId") val lId: Int = 0,
     @SerialName("siteId") val siteId: Int = 1,

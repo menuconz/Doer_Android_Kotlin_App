@@ -1,5 +1,6 @@
 package nz.co.doer.data.repository
 
+import kotlinx.coroutines.flow.first
 import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.remote.ApiResult
 import nz.co.doer.data.remote.api.TimeTrackingApi
@@ -19,11 +20,17 @@ class TimeTrackingRepository @Inject constructor(
         dateFrom: String? = null,
         dateTo: String? = null
     ): ApiResult<List<SiteHoursSummaryDto>> = safeApiCall {
+        // Managers and admins see all workers' hours for the site, not just their own.
+        // Contractors / caregivers see only their own hours.
+        val isManager = preferencesManager.isManager.first()
+        val isAdmin = preferencesManager.isAdmin.first()
+        val userIdFilter = if (isManager || isAdmin) "" else preferencesManager.getUserId()
+
         val filter = TimeTrackingFilterDto(
             date = date,
             dateFrom = dateFrom,
             dateTo = dateTo,
-            userId = preferencesManager.getUserId(),
+            userId = userIdFilter,
             lId = 1,
             siteId = 1,
             basicAuthUid = preferencesManager.getBasicAuthUid()

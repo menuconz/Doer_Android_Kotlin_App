@@ -95,11 +95,17 @@ fun ShiftDetailsScreen(
     onSendFeedback: (Int) -> Unit = {},
     onViewReviews: (Int) -> Unit = {},
     onNavigateToSite: (shiftId: Int, lat: Double, lng: Double, address: String, projectName: String) -> Unit = { _, _, _, _, _ -> },
+    refreshKey: Boolean = false,
     viewModel: ShiftDetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // Refresh shift data when returning from feedback/reviews/edit flows
+    LaunchedEffect(refreshKey) {
+        if (refreshKey) viewModel.refresh()
+    }
 
     LaunchedEffect(state.isDeleted) {
         if (state.isDeleted) onBack()
@@ -1051,6 +1057,10 @@ private fun ClockInOutSection(
             } else {
                 proceedClockInWithLastLocation()
             }
+        } else {
+            // User denied foreground location — still allow clock-in (tracking will be limited).
+            // Matches iOS behavior where contractors can clock in without granting location.
+            proceedClockInWithLastLocation()
         }
     }
 

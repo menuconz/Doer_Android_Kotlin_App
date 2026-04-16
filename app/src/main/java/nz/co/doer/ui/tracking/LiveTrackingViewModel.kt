@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import nz.co.doer.BuildConfig
 import nz.co.doer.data.remote.ApiResult
 import nz.co.doer.data.remote.dto.DoerTrackingState
 import nz.co.doer.data.remote.dto.TrackingStatusDto
@@ -17,6 +18,7 @@ import nz.co.doer.data.repository.LocationTrackingRepository
 import timber.log.Timber
 import java.time.Duration
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
@@ -218,10 +220,17 @@ class LiveTrackingViewModel @Inject constructor(
 
     private fun computeTimeOnSite(timestamp: String): String {
         if (timestamp.isBlank()) return ""
+        // Debug builds: use NZ timezone so testing from a non-NZ device
+        // (where the dev phone runs in another TZ) shows correct elapsed time.
+        // Release builds: use device-local time (matches the NZ user base).
+        val now = if (BuildConfig.DEBUG) {
+            LocalDateTime.now(ZoneId.of("Pacific/Auckland"))
+        } else {
+            LocalDateTime.now()
+        }
         for (formatter in parseFormatters) {
             try {
                 val clockInTime = LocalDateTime.parse(timestamp.trim(), formatter)
-                val now = LocalDateTime.now()
                 val duration = Duration.between(clockInTime, now)
                 val hours = duration.toHours()
                 val minutes = duration.toMinutes() % 60

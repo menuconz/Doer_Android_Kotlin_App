@@ -11,6 +11,7 @@ import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.remote.ApiResult
 import nz.co.doer.data.remote.dto.DoerHoursDto
 import nz.co.doer.data.remote.dto.EditTimeEntryDto
+import nz.co.doer.data.remote.dto.SessionDto
 import nz.co.doer.data.remote.dto.SiteHoursSummaryDto
 import nz.co.doer.data.remote.dto.StageHoursDto
 import nz.co.doer.data.repository.LocationTrackingRepository
@@ -64,12 +65,39 @@ data class DoerHoursUi(
     val totalHours: Double,
     val stage: String,
     val isActive: Boolean,
-    val isOverThreshold: Boolean
+    val isOverThreshold: Boolean,
+    val sessions: List<SessionUi> = emptyList(),
+    val isExpanded: Boolean = false
 ) {
     val totalHoursFormatted: String get() {
         val h = totalHours.toInt()
         val m = ((totalHours - h) * 60).toInt()
         return "${h}h ${m}m"
+    }
+}
+
+data class SessionUi(
+    val date: String,            // "2026-04-15"
+    val clockInTime: String,     // "HH:mm"
+    val clockOutTime: String,    // "HH:mm" or "" for active
+    val hours: Double,
+    val stage: String,
+    val isActive: Boolean
+) {
+    val hoursFormatted: String get() {
+        val h = hours.toInt()
+        val m = ((hours - h) * 60).toInt()
+        return "${h}h ${m}m"
+    }
+    val displayDate: String get() {
+        // "2026-04-15" → "15 Apr 2026"
+        return try {
+            val parts = date.split("-")
+            val day = parts[2].toInt()
+            val month = listOf("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")[parts[1].toInt() - 1]
+            val year = parts[0]
+            "$day $month $year"
+        } catch (_: Exception) { date }
     }
 }
 
@@ -121,6 +149,19 @@ class TimeTrackingDashboardViewModel @Inject constructor(
         val updatedSites = _uiState.value.sites.map { site ->
             if (site.shiftId == shiftId) site.copy(isExpanded = !site.isExpanded)
             else site
+        }
+        _uiState.value = _uiState.value.copy(sites = updatedSites)
+    }
+
+    fun toggleDoerExpanded(shiftId: Int, userId: String) {
+        val updatedSites = _uiState.value.sites.map { site ->
+            if (site.shiftId != shiftId) site
+            else site.copy(
+                doerHours = site.doerHours.map { doer ->
+                    if (doer.userId == userId) doer.copy(isExpanded = !doer.isExpanded)
+                    else doer
+                }
+            )
         }
         _uiState.value = _uiState.value.copy(sites = updatedSites)
     }
@@ -206,7 +247,22 @@ class TimeTrackingDashboardViewModel @Inject constructor(
             totalHours = totalHours,
             stage = stage,
             isActive = isActive,
-            isOverThreshold = totalHours >= THRESHOLD_HOURS
+            isOverThreshold = totalHours >= THRESHOLD_HOURS,
+            sessions = sessions.map { it.toUi() }
+        )
+    }
+
+    private fun SessionDto.toUi(): SessionUi {
+        // Extract "HH:mm" from "yyyy-MM-ddTHH:mm:ss"
+        val inTime = clockInTime.substringAfter('T', clockInTime).take(5)
+        val outTime = clockOutTime?.substringAfter('T', clockOutTime ?: "")?.take(5) ?: ""
+        return SessionUi(
+            date = date,
+            clockInTime = inTime,
+            clockOutTime = outTime,
+            hours = hours,
+            stage = stage,
+            isActive = isActive
         )
     }
 

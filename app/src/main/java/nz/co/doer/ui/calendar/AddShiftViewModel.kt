@@ -256,7 +256,11 @@ class AddShiftViewModel @Inject constructor(
                 invoiceStatus = 1,
                 isAllDay = state.isAllDay,
                 isReminderScheduled = isReminderScheduled,
-                reminderOffset = if (isReminderScheduled) "00:${reminder!!.offsetMinutes}:00" else null,
+                reminderOffset = if (isReminderScheduled) {
+                    // Convert total minutes → HH:mm:ss (minutes/seconds must stay 0-59 for C# TimeSpan.Parse)
+                    val totalMin = reminder!!.offsetMinutes
+                    String.format("%02d:%02d:00", totalMin / 60, totalMin % 60)
+                } else null,
                 clientId = clientId,
                 createdBy = userId,
                 createdDate = now,

@@ -465,6 +465,11 @@ class ShiftDetailsViewModel @Inject constructor(
         val shift = _uiState.value.shift ?: return
         val locationType = _uiState.value.selectedClockLocationType
 
+        // Resolve the selected sub-item / stage (null if shift has no stages)
+        val selectedStageName = _uiState.value.selectedStageName
+        val selectedStage = _uiState.value.availableStages
+            .firstOrNull { it.subitem == selectedStageName }
+
         // Start tracking state machine
         trackingManager.clockIn(
             shiftId = shift.id,
@@ -473,7 +478,9 @@ class ShiftDetailsViewModel @Inject constructor(
             siteLongitude = shift.longitude,
             currentLatitude = currentLatitude,
             currentLongitude = currentLongitude,
-            projectName = shift.projectName.ifBlank { "Site #${shift.id}" }
+            projectName = shift.projectName.ifBlank { "Site #${shift.id}" },
+            subItemId = selectedStage?.id,
+            subItemName = selectedStage?.subitem
         )
 
         // Also update shift status on the server (existing logic)
@@ -526,6 +533,7 @@ class ShiftDetailsViewModel @Inject constructor(
                         isUpdating = false,
                         successMessage = "Shift marked as complete"
                     )
+                    refresh()
                 }
                 is ApiResult.Error -> {
                     Timber.e("Failed to mark shift complete: ${result.message}")
@@ -572,6 +580,7 @@ class ShiftDetailsViewModel @Inject constructor(
                         isUpdating = false,
                         successMessage = "Shift started"
                     )
+                    refresh()
                 }
                 is ApiResult.Error -> {
                     Timber.e("Failed to start shift: ${result.message}")
@@ -603,6 +612,7 @@ class ShiftDetailsViewModel @Inject constructor(
                         isUpdating = false,
                         successMessage = "Shift ended"
                     )
+                    refresh()
                 }
                 is ApiResult.Error -> {
                     Timber.e("Failed to end shift: ${result.message}")
@@ -633,6 +643,7 @@ class ShiftDetailsViewModel @Inject constructor(
                         isUpdating = false,
                         successMessage = "Shift marked as not completed"
                     )
+                    refresh()
                 }
                 is ApiResult.Error -> {
                     Timber.e("Failed to reject shift: ${result.message}")
@@ -722,6 +733,7 @@ class ShiftDetailsViewModel @Inject constructor(
                         isUpdating = false,
                         successMessage = "Shift updated"
                     )
+                    refresh()
                 }
                 is ApiResult.Error -> {
                     Timber.e("Failed to update shift: ${result.message}")

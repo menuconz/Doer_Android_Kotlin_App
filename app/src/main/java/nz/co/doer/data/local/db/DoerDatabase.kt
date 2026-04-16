@@ -9,7 +9,7 @@ import androidx.room.RoomDatabase
         PendingLocationPointEntity::class,
         PendingNotificationEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class DoerDatabase : RoomDatabase() {
