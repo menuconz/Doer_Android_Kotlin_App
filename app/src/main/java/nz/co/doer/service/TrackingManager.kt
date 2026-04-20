@@ -132,14 +132,12 @@ class TrackingManager @Inject constructor(
         // Note: do NOT push status here — we'll transition immediately to EN_ROUTE or
         // ON_SITE below and push the FINAL state once. Pushing twice in quick succession
         // races on the server and can leave Live Tracking stuck on "Clocked In".
-
-        // Record clock-in event
-        recordClockEvent(
-            shiftId = shiftId,
-            eventType = ClockEventType.CLOCK_IN,
-            latitude = currentLatitude,
-            longitude = currentLongitude
-        )
+        //
+        // Also: do NOT record the CLOCK_IN event here — defer it until AFTER the
+        // EN_ROUTE/ON_SITE transition so the ClockEvent embeds the final trackingState.
+        // Otherwise the async ClockEvent write can land at the server AFTER the
+        // UpdateTrackingStatus write and overwrite it with "CLOCKED_IN", leaving the
+        // manager's Live Tracking view stuck on "Clocked In" instead of "On the Way".
 
         // Notify manager
         notificationHelper.onClockIn(shiftId, currentLatitude, currentLongitude, projectName)
@@ -176,6 +174,16 @@ class TrackingManager @Inject constructor(
             startOnSiteMonitoring()
             startLocationService(TrackingMode.ON_SITE)
         }
+
+        // Record the CLOCK_IN event AFTER the state has settled on EN_ROUTE / ON_SITE.
+        // recordClockEvent reads _trackingState.value at queue time, so the embedded
+        // trackingState will be the final one, not the intermediate CLOCKED_IN.
+        recordClockEvent(
+            shiftId = shiftId,
+            eventType = ClockEventType.CLOCK_IN,
+            latitude = currentLatitude,
+            longitude = currentLongitude
+        )
     }
 
     /**

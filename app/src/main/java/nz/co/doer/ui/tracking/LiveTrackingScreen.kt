@@ -55,6 +55,7 @@ import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
@@ -134,7 +135,11 @@ fun LiveTrackingScreen(
                         .fillMaxWidth()
                         .weight(0.45f)
                 ) {
-                    DoerMap(doers = state.activeDoers, routePoints = state.selectedDoerRoute)
+                    DoerMap(
+                        doers = state.activeDoers,
+                        routePoints = state.selectedDoerRoute,
+                        selectedDoerUserId = state.selectedDoerUserId
+                    )
 
                     // Polling indicator
                     if (state.isPolling) {
@@ -286,29 +291,42 @@ private fun StatChip(label: String, count: Int, color: Color) {
 }
 
 @Composable
-private fun DoerMap(doers: List<ActiveDoerUi>, routePoints: List<LatLng> = emptyList()) {
+private fun DoerMap(
+    doers: List<ActiveDoerUi>,
+    routePoints: List<LatLng> = emptyList(),
+    selectedDoerUserId: String? = null
+) {
     // Default to New Zealand center
     val defaultPosition = LatLng(-36.8485, 174.7633) // Auckland
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(defaultPosition, 10f)
     }
 
-    // Auto-fit bounds when doers change
-    LaunchedEffect(doers) {
+    val selectedDoer = selectedDoerUserId?.let { id -> doers.firstOrNull { it.userId == id } }
+
+    // Auto-fit bounds when doers/selection changes.
+    // Only include the site in bounds when the selected Doer is still travelling —
+    // once they've arrived, the Doer position already covers the site.
+    LaunchedEffect(doers, selectedDoerUserId) {
         if (doers.isNotEmpty()) {
             val validDoers = doers.filter { it.latitude != 0.0 && it.longitude != 0.0 }
-            if (validDoers.size == 1) {
-                val single = validDoers.first()
+            val extraPoints = selectedDoer?.let { d ->
+                val isTravelling = d.trackingState == DoerTrackingState.EN_ROUTE ||
+                        d.trackingState == DoerTrackingState.CLOCKED_IN
+                val lat = d.siteLatitude; val lng = d.siteLongitude
+                if (isTravelling && lat != null && lng != null && lat != 0.0 && lng != 0.0)
+                    listOf(LatLng(lat, lng))
+                else emptyList()
+            } ?: emptyList()
+            val allPoints = validDoers.map { LatLng(it.latitude, it.longitude) } + extraPoints
+
+            if (allPoints.size == 1) {
                 cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(
-                        LatLng(single.latitude, single.longitude), 14f
-                    )
+                    CameraUpdateFactory.newLatLngZoom(allPoints.first(), 14f)
                 )
-            } else if (validDoers.size > 1) {
+            } else if (allPoints.size > 1) {
                 val boundsBuilder = LatLngBounds.builder()
-                validDoers.forEach {
-                    boundsBuilder.include(LatLng(it.latitude, it.longitude))
-                }
+                allPoints.forEach(boundsBuilder::include)
                 cameraPositionState.animate(
                     CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 80)
                 )
@@ -335,6 +353,30 @@ private fun DoerMap(doers: List<ActiveDoerUi>, routePoints: List<LatLng> = empty
             )
         }
 
+        // Site / shift-destination marker — shown ONLY for the currently selected Doer
+        // while they are still travelling. Once they've arrived / are on-site / leaving,
+        // the Doer pin already sits on the site so the destination marker is redundant
+        // and just causes visual overlap.
+        selectedDoer?.let { d ->
+            val lat = d.siteLatitude
+            val lng = d.siteLongitude
+            val isTravelling = d.trackingState == DoerTrackingState.EN_ROUTE ||
+                    d.trackingState == DoerTrackingState.CLOCKED_IN
+            if (isTravelling && lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+                MarkerComposable(
+                    keys = arrayOf("site-${d.userId}"),
+                    state = MarkerState(position = LatLng(lat, lng)),
+                    title = d.projectName.ifBlank { d.siteName.ifBlank { "Site" } },
+                    snippet = d.siteName.takeIf { it.isNotBlank() && it != d.projectName }
+                        ?: "Shift location",
+                    anchor = androidx.compose.ui.geometry.Offset(0.5f, 1.0f),
+                    zIndex = 0f
+                ) {
+                    Text(text = "📍", fontSize = 40.sp)
+                }
+            }
+        }
+
         doers.filter { it.latitude != 0.0 && it.longitude != 0.0 }.forEach { doer ->
             val hue = when (doer.trackingState) {
                 DoerTrackingState.EN_ROUTE -> BitmapDescriptorFactory.HUE_ORANGE
@@ -359,7 +401,8 @@ private fun DoerMap(doers: List<ActiveDoerUi>, routePoints: List<LatLng> = empty
                 state = MarkerState(position = LatLng(doer.latitude, doer.longitude)),
                 title = markerTitle,
                 snippet = snippet,
-                icon = BitmapDescriptorFactory.defaultMarker(hue)
+                icon = BitmapDescriptorFactory.defaultMarker(hue),
+                zIndex = 1f
             )
         }
     }
