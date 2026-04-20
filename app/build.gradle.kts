@@ -26,8 +26,8 @@ android {
         applicationId = "nz.co.doer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 68
-        versionName = "2.3"
+        versionCode = 70
+        versionName = "2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

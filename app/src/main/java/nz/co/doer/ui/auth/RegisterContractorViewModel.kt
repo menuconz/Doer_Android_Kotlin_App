@@ -146,6 +146,14 @@ class RegisterContractorViewModel @Inject constructor(
 
                 val deviceToken = try { firebaseMessaging.token.await() } catch (e: Exception) { "" }
 
+                // Convert picker "dd/MM/yyyy" → ISO "yyyy-MM-ddT00:00:00" so the .NET
+                // backend can parse it regardless of server culture. Without this the
+                // server rejects it as "value 20/04/1999 is not valid for dateOfBirth".
+                val isoDateOfBirth = if (state.dateOfBirth.isNotBlank()) {
+                    val parts = state.dateOfBirth.split("/")
+                    if (parts.size == 3) "${parts[2]}-${parts[1]}-${parts[0]}T00:00:00" else ""
+                } else ""
+
                 val user = UserDto(
                     displayName = state.fullName.trim(),
                     email = state.email.trim(),
@@ -154,7 +162,7 @@ class RegisterContractorViewModel @Inject constructor(
                     address = state.searchAddress,
                     latitude = state.latitude,
                     longitude = state.longitude,
-                    dateOfBirthString = state.dateOfBirth,
+                    dateOfBirthString = isoDateOfBirth,
                     deviceToken = deviceToken,
                     deviceTypeId = 2
                 )
