@@ -21,7 +21,9 @@ import nz.co.doer.data.remote.dto.DoerTrackingState
 import nz.co.doer.data.remote.dto.LocationBatchDto
 import nz.co.doer.data.remote.dto.LocationPointDto
 import nz.co.doer.data.remote.dto.TrackingStatusDto
+import nz.co.doer.data.remote.ApiResult
 import nz.co.doer.data.repository.LocationTrackingRepository
+import retrofit2.HttpException
 import timber.log.Timber
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -88,6 +90,19 @@ class TrackingManager @Inject constructor(
     // Selected sub-item / stage for the active shift (for per-stage hours reporting)
     private var activeSubItemId: Int? = null
     private var activeSubItemName: String? = null
+
+    init {
+        // Listen for "shift was deleted on server" signals from the sync layer so a
+        // stale tracker (possibly persisted across app restarts) heals on the first
+        // failed sync attempt.
+        scope.launch {
+            offlineSyncManager.shiftDeletedEvents.collect { deletedShiftId ->
+                if (_activeShiftId.value == deletedShiftId) {
+                    handleShiftDeleted(deletedShiftId)
+                }
+            }
+        }
+    }
 
     /**
      * Clock in at a location. This is the entry point for tracking.
@@ -336,12 +351,41 @@ class TrackingManager @Inject constructor(
                     siteLongitude = siteLng,
                     basicAuthUid = preferencesManager.getBasicAuthUid()
                 )
-                locationTrackingRepository.updateTrackingStatus(dto)
+                val result = locationTrackingRepository.updateTrackingStatus(dto)
+                if (result is ApiResult.Error &&
+                    (result.exception as? HttpException)?.code() == 404
+                ) {
+                    Timber.w("Active shift $shiftId no longer exists on server — stopping tracker")
+                    handleShiftDeleted(shiftId)
+                    return@launch
+                }
                 Timber.d("Pushed tracking status: state=$state, shiftId=$shiftId")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to push tracking status for shift $shiftId (state=$state)")
             }
         }
+    }
+
+    /**
+     * Called when the server reports (404) that the active shift has been deleted.
+     * Tears down all local tracking state without attempting further server writes
+     * for this shift.
+     */
+    private fun handleShiftDeleted(shiftId: Int) {
+        stopOnSiteMonitoring()
+        synchronized(batchLock) { locationBatch.clear() }
+        geofenceManager.removeGeofence(shiftId)
+        stopLocationService()
+
+        notificationHelper.onShiftDeleted(shiftId, activeProjectName)
+
+        _activeShiftId.value = null
+        activeProjectName = ""
+        activeSiteLat = null
+        activeSiteLng = null
+        activeSubItemId = null
+        activeSubItemName = null
+        _trackingState.value = DoerTrackingState.IDLE
     }
 
     /**

@@ -26,8 +26,8 @@ android {
         applicationId = "nz.co.doer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 67
-        versionName = "2.2"
+        versionCode = 68
+        versionName = "2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -151,7 +151,7 @@ dependencies {
     ksp(libs.hilt.work.compiler)
 
     // AppCompat (for Navigation SDK Activity)
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
 
     // Google Navigation SDK (turn-by-turn)
     api(libs.google.navigation)

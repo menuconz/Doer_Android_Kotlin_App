@@ -104,6 +104,7 @@ data class SessionUi(
 data class TimeTrackingDashboardUiState(
     val sites: List<SiteHoursUi> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
     val selectedDate: String = "",
     val selectedDateDisplay: String = "",
@@ -167,16 +168,20 @@ class TimeTrackingDashboardViewModel @Inject constructor(
     }
 
     fun refresh() {
-        loadData()
+        loadData(isPullToRefresh = true)
     }
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }
 
-    private fun loadData() {
+    private fun loadData(isPullToRefresh: Boolean = false) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = if (isPullToRefresh) _uiState.value.isLoading else true,
+                isRefreshing = isPullToRefresh,
+                errorMessage = null
+            )
 
             when (val result = timeTrackingRepository.getSiteHoursSummary(
                 date = _uiState.value.selectedDate
@@ -197,6 +202,7 @@ class TimeTrackingDashboardViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         sites = sorted,
                         isLoading = false,
+                        isRefreshing = false,
                         totalSites = sorted.size,
                         totalDoers = sorted.sumOf { it.doerCount },
                         totalHours = totalHrs,
@@ -208,6 +214,7 @@ class TimeTrackingDashboardViewModel @Inject constructor(
                     Timber.e("Failed to load time tracking: ${result.message}")
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         errorMessage = result.message
                     )
                 }

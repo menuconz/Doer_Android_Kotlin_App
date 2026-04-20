@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -218,6 +220,7 @@ fun DayDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
         ) {
             // Header
             Column(
@@ -878,20 +881,26 @@ private fun AddSubItemRow(shiftId: Int, newName: String, viewModel: DayDetailVie
                 .padding(5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
+            BasicTextField(
                 value = newName,
                 onValueChange = { viewModel.updateNewSubItemName(shiftId, it) },
-                placeholder = { Text("Enter sub item name...", fontSize = 13.sp) },
-                modifier = Modifier.weight(1f).height(45.dp),
-                textStyle = TextStyle(fontSize = 13.sp),
-                singleLine = true
+                modifier = Modifier.weight(1f),
+                textStyle = TextStyle(fontSize = 13.sp, color = Color(0xFF333333)),
+                singleLine = true,
+                decorationBox = { inner ->
+                    if (newName.isEmpty()) {
+                        Text("Enter sub item name...", fontSize = 13.sp, color = Color.Gray)
+                    }
+                    inner()
+                }
             )
             Spacer(modifier = Modifier.width(5.dp))
             Button(
                 onClick = { viewModel.addSubItem(shiftId) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF28A745)),
                 shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.height(35.dp)
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp, 4.dp),
+                modifier = Modifier.height(30.dp)
             ) {
                 Text("Add", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }

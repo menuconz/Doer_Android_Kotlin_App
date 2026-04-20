@@ -112,6 +112,20 @@ fun ShiftFilesScreen(
         }
     }
 
+    // Popup when there are no files for this shift (replaces the HTTP 404 snackbar)
+    if (state.showNoFilesDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissNoFilesDialog() },
+            title = { Text("No Files") },
+            text = { Text("No files are available for this job yet.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissNoFilesDialog() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     // Matching MAUI: ActionSheet "Select Upload Option" with Gallery/Files/Cancel
     if (state.showUploadOptions) {
         AlertDialog(

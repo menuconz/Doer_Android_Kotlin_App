@@ -20,24 +20,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -74,7 +67,6 @@ private val BgColor = Color(0xFFF8F9FA)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveTrackingScreen(
-    onOpenDrawer: () -> Unit,
     viewModel: LiveTrackingViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -95,43 +87,10 @@ fun LiveTrackingScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Live Tracking", color = Color.White, fontSize = 18.sp)
-                        if (state.lastUpdated.isNotBlank()) {
-                            Text(
-                                "Updated: ${state.lastUpdated}",
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Default.Menu, "Menu", tint = Color.White)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Icons.Default.Refresh, "Refresh", tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
+    Box(modifier = Modifier.fillMaxSize()) {
         if (state.isLoading && state.activeDoers.isEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
@@ -140,9 +99,28 @@ fun LiveTrackingScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .background(BgColor)
             ) {
+                // Refresh action + "last updated" row (replaces previous TopAppBar actions)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (state.lastUpdated.isNotBlank()) {
+                        Text(
+                            "Updated: ${state.lastUpdated}",
+                            color = Gray500,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        Icon(Icons.Default.Refresh, "Refresh", tint = Blue)
+                    }
+                }
                 // Stats Bar
                 StatsBar(
                     totalActive = state.totalActiveDoers,
@@ -256,6 +234,10 @@ fun LiveTrackingScreen(
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 

@@ -22,25 +22,30 @@ data class FileModelDto(
 
 @Serializable
 data class FileUploadModelDto(
-    @SerialName("ShiftId") val shiftId: String = "",
-    @SerialName("FileName") val fileName: String = "",
-    @SerialName("FileUrl") val fileUrl: String = "",
-    @SerialName("CreatedBy") val createdBy: String = "",
-    @SerialName("CreatedByName") val createdByName: String = "",
-    @SerialName("CreatedDate") val createdDate: String = "",
-    @SerialName("FileSize") val fileSize: String = "",
-    @SerialName("FileExtension") val fileExtension: String = "",
-    @SerialName("IsImage") val isImage: Boolean = false,
-    @SerialName("ThumbnailUrl") val thumbnailUrl: String = "",
+    @SerialName("id") val id: Int = 0,
+    @SerialName("shiftId") val shiftId: String = "",
+    @SerialName("shiftSubItemId") val shiftSubItemId: String? = null,
+    @SerialName("fileName") val fileName: String = "",
+    @SerialName("fileUrl") val fileUrl: String = "",
+    @SerialName("createdBy") val createdBy: String = "",
+    @SerialName("createdByName") val createdByName: String = "",
+    @SerialName("createdDate") val createdDate: String = "",
+    @SerialName("fileSize") val fileSize: String = "",
+    @SerialName("fileExtension") val fileExtension: String = "",
+    @SerialName("thumbnailUrl") val thumbnailUrl: String = "",
     // EntityBase fields
-    @SerialName("LId") val lId: Int = 0,
-    @SerialName("SiteId") val siteId: Int = 1,
-    @SerialName("ContactID") val contactId: Int = 0,
-    @SerialName("UserID") val userId: String = "",
-    @SerialName("ErrorMessage") val errorMessage: String? = null,
-    @SerialName("Status") val status: Boolean = false,
-    @SerialName("BasicAuthUid") val basicAuthUid: String = ""
-)
+    @SerialName("lId") val lId: Int = 0,
+    @SerialName("siteId") val siteId: Int = 1,
+    @SerialName("contactID") val contactId: Int = 0,
+    @SerialName("userID") val userId: String = "",
+    @SerialName("errorMessage") val errorMessage: String? = null,
+    @SerialName("status") val status: Boolean = false,
+    @SerialName("basicAuthUid") val basicAuthUid: String = ""
+) {
+    val isImage: Boolean
+        get() = fileName.substringAfterLast('.', "").lowercase() in
+            setOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "heif")
+}
 
 @Serializable
 data class FileUploadResponseDto(

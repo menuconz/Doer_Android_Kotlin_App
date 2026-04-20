@@ -1,8 +1,10 @@
 package nz.co.doer.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.systemGestureExclusion
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -28,11 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nz.co.doer.data.remote.ApiResult
 import nz.co.doer.data.repository.ShiftRepository
@@ -102,6 +102,21 @@ private val DRAWER_ROUTES = setOf(
     Routes.TIME_TRACKING,
 )
 
+private fun topBarTitleFor(route: String): String = when (route) {
+    Routes.CALENDAR -> "Home"
+    Routes.MAIN_LEADS_JOBS -> "NZ MAHI"
+    Routes.NEW_LEADS -> "New Leads"
+    Routes.QUOTED_LEADS -> "Quoted Leads"
+    Routes.CONTACTED_LEADS -> "Contacted Leads"
+    Routes.CLIENTS -> "Clients"
+    Routes.ALL_CONTRACTORS -> "Contractors"
+    Routes.PROFILE -> "Profile"
+    Routes.FILO_KRETO_TEAM -> "FiloKreto Team"
+    Routes.LIVE_TRACKING -> "Live Tracking"
+    Routes.TIME_TRACKING -> "Time Tracking"
+    else -> ""
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DoerNavHost(
@@ -118,6 +133,20 @@ fun DoerNavHost(
     val currentRoute = navBackStackEntry?.destination?.route ?: ""
 
     val isDrawerRoute = DRAWER_ROUTES.contains(currentRoute)
+
+    // Unread notification count — refreshed when we land on Calendar
+    val unreadCount = remember { mutableIntStateOf(0) }
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == Routes.CALENDAR) {
+            val userId = preferencesManager.getUserId()
+            when (val result = shiftRepository.getUserAllNotificationsById(userId)) {
+                is ApiResult.Success -> {
+                    unreadCount.intValue = result.data.count { !it.isRead }
+                }
+                else -> {}
+            }
+        }
+    }
 
     // Close drawer when navigating away from drawer routes
     LaunchedEffect(currentRoute) {
@@ -157,138 +186,83 @@ fun DoerNavHost(
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = isDrawerRoute,
-        drawerContent = {
-            DrawerContent(
-                preferencesManager = preferencesManager,
-                currentRoute = currentRoute,
-                onNavigate = { route ->
-                    scope.launch {
-                        drawerState.close()
-                        navController.navigate(route) { launchSingleTop = true }
-                    }
-                },
-                onLogout = {
-                    scope.launch { drawerState.close() }
-                    doLogout()
-                }
-            )
-        }
+    // Outer Box excludes the root UI from Android's left-edge system back gesture,
+    // which otherwise hijacks taps on the hamburger IconButton (x≈4dp) and pops
+    // the start destination, leaving the window empty on Pixel 9 / Android 15.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemGestureExclusion()
     ) {
-        NavHost(
-            navController = navController,
-            startDestination = Routes.LOADING
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = isDrawerRoute,
+            drawerContent = {
+                DrawerContent(
+                    preferencesManager = preferencesManager,
+                    currentRoute = currentRoute,
+                    onNavigate = { route ->
+                        scope.launch {
+                            drawerState.close()
+                            navController.navigate(route) { launchSingleTop = true }
+                        }
+                    },
+                    onLogout = {
+                        scope.launch { drawerState.close() }
+                        doLogout()
+                    }
+                )
+            }
         ) {
-            // ===================== AUTH ROUTES =====================
-
-            composable(Routes.LOADING) {
-                LoadingScreen(
-                    secureStorageManager = secureStorageManager,
-                    onLoggedIn = {
-                        navController.navigate(Routes.CALENDAR) {
-                            popUpTo(Routes.LOADING) { inclusive = true }
-                        }
-                    },
-                    onNotLoggedIn = {
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(Routes.LOADING) { inclusive = true }
-                        }
-                    }
-                )
-            }
-
-            composable(Routes.LOGIN) {
-                LoginScreen(
-                    onLoginSuccess = {
-                        navController.navigate(Routes.CALENDAR) {
-                            popUpTo(Routes.LOGIN) { inclusive = true }
-                        }
-                    },
-                    onForgotPassword = { navController.navigate(Routes.FORGOT_PASSWORD) },
-                    onRegisterContractor = { navController.navigate(Routes.REGISTER_CONTRACTOR) },
-                    onRegisterManager = { navController.navigate(Routes.REGISTER_REST_HOME) }
-                )
-            }
-
-            composable(Routes.REGISTER_CONTRACTOR) {
-                RegisterContractorScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
-                )
-            }
-
-            composable(Routes.REGISTER_REST_HOME) {
-                RegisterManagerScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
-                )
-            }
-
-            composable(Routes.FORGOT_PASSWORD) {
-                ForgotPasswordScreen(
-                    onBack = { navController.popBackStack() },
-                    onResetSuccess = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
-                )
-            }
-
-            composable(Routes.GENERATE_OTP) {
-                GenerateOTPScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = { navController.navigate(Routes.FORGOT_PASSWORD) }
-                )
-            }
-
-            // ===================== CALENDAR & SHIFTS =====================
-
-            composable(Routes.CALENDAR) {
-                // Fetch unread notification count
-                val unreadCount = remember { mutableIntStateOf(0) }
-                LaunchedEffect(Unit) {
-                    val userId = preferencesManager.getUserId()
-                    when (val result = shiftRepository.getUserAllNotificationsById(userId)) {
-                        is ApiResult.Success -> {
-                            unreadCount.intValue = result.data.count { !it.isRead }
-                        }
-                        else -> {}
-                    }
-                }
-
-                Scaffold(
-                    topBar = {
+            Scaffold(
+                // On drawer routes, let the Scaffold apply its default insets —
+                // the TopAppBar consumes the top (status bar), and the bottom
+                // (nav bar / gesture pill) gets passed through to the body so
+                // content doesn't scroll under the home indicator.
+                // On non-drawer routes (detail, auth), the inner screen has its
+                // own Scaffold that applies insets. We zero out the root's
+                // insets there so they don't stack and leave a big empty gap
+                // above the inner TopAppBar.
+                contentWindowInsets = if (isDrawerRoute)
+                    androidx.compose.material3.ScaffoldDefaults.contentWindowInsets
+                else
+                    androidx.compose.foundation.layout.WindowInsets(0),
+                topBar = {
+                    if (isDrawerRoute) {
                         TopAppBar(
-                            title = { Text("Home", color = Color.White) },
+                            title = { Text(topBarTitleFor(currentRoute), color = Color.White) },
                             navigationIcon = {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                     Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
                                 }
                             },
                             actions = {
-                                IconButton(onClick = {
-                                    navController.navigate(Routes.NOTIFICATIONS)
-                                }) {
-                                    BadgedBox(
-                                        badge = {
-                                            if (unreadCount.intValue > 0) {
-                                                Badge(
-                                                    containerColor = Color(0xFFFF3B30)
-                                                ) {
-                                                    Text(
-                                                        text = if (unreadCount.intValue > 99) "99+" else unreadCount.intValue.toString(),
-                                                        color = Color.White,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
+                                if (currentRoute == Routes.CALENDAR) {
+                                    IconButton(onClick = {
+                                        navController.navigate(Routes.NOTIFICATIONS)
+                                    }) {
+                                        BadgedBox(
+                                            badge = {
+                                                if (unreadCount.intValue > 0) {
+                                                    Badge(
+                                                        containerColor = Color(0xFFFF3B30)
+                                                    ) {
+                                                        Text(
+                                                            text = if (unreadCount.intValue > 99) "99+" else unreadCount.intValue.toString(),
+                                                            color = Color.White,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
                                                 }
                                             }
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Notifications,
+                                                contentDescription = "Notifications",
+                                                tint = Color.White
+                                            )
                                         }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Notifications,
-                                            contentDescription = "Notifications",
-                                            tint = Color.White
-                                        )
                                     }
                                 }
                             },
@@ -297,408 +271,470 @@ fun DoerNavHost(
                             )
                         )
                     }
-                ) { padding ->
-                    CalendarScreen(
-                        modifier = Modifier.padding(padding),
-                        onDayTapped = { dateStr ->
-                            navController.navigate("${Routes.DAY_TIMELINE}/$dateStr")
-                        },
-                        onDayLongPressed = { dateStr ->
-                            navController.navigate("${Routes.ADD_SHIFT}/$dateStr")
-                        }
-                    )
                 }
-            }
+            ) { padding ->
+                NavHost(
+                    modifier = Modifier.padding(padding),
+                    navController = navController,
+                    startDestination = Routes.LOADING
+                ) {
+                    // ===================== AUTH ROUTES =====================
 
-            composable("${Routes.DAY_TIMELINE}/{date}") {
-                DayTimelineScreen(
-                    onBack = { navController.popBackStack() },
-                    onShiftTapped = { dateStr, shiftId ->
-                        navController.navigate("${Routes.DAY_DETAIL}/$dateStr?shiftId=$shiftId")
-                    },
-                    onViewAll = { dateStr ->
-                        navController.navigate("${Routes.DAY_DETAIL}/$dateStr")
-                    },
-                    onAddShift = { dateStr, hour ->
-                        val route = if (hour != null) {
-                            "${Routes.ADD_SHIFT}/$dateStr?hour=$hour"
-                        } else {
-                            "${Routes.ADD_SHIFT}/$dateStr"
-                        }
-                        navController.navigate(route)
-                    }
-                )
-            }
-
-            composable("${Routes.DAY_DETAIL}/{date}?shiftId={shiftId}") {
-                DayDetailScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewDetails = { shiftId ->
-                        navController.navigate("${Routes.SHIFT_DETAILS}/$shiftId")
-                    },
-                    onViewFiles = { shiftId ->
-                        navController.navigate("${Routes.SHIFT_FILES}/$shiftId")
-                    },
-                    onViewQuotations = { shiftId ->
-                        navController.navigate("${Routes.VIEW_QUOTATIONS}/$shiftId")
-                    },
-                    onViewMessages = { shiftId ->
-                        navController.navigate("${Routes.EMAIL_MESSAGES}/$shiftId")
-                    },
-                    onViewSubItemMessages = { shiftId, subItemId ->
-                        navController.navigate("${Routes.SUB_ITEM_MESSAGES}/$shiftId/$subItemId")
-                    },
-                    onViewSubItemFiles = { shiftId, subItemId ->
-                        navController.navigate("${Routes.SUB_ITEM_FILES}/$shiftId/$subItemId")
-                    }
-                )
-            }
-
-            composable("${Routes.ADD_SHIFT}/{date}?hour={hour}") {
-                AddShiftScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = { navController.popBackStack(Routes.CALENDAR, inclusive = false) }
-                )
-            }
-
-            composable("${Routes.SHIFT_DETAILS}/{shiftId}") { backStackEntry ->
-                // Refresh the shift details when returning from Send Feedback / Reviews etc.
-                val shiftUpdated by backStackEntry.savedStateHandle
-                    .getStateFlow("shiftUpdated", false).collectAsState()
-                LaunchedEffect(shiftUpdated) {
-                    if (shiftUpdated) {
-                        backStackEntry.savedStateHandle["shiftUpdated"] = false
-                    }
-                }
-                ShiftDetailsScreen(
-                    onBack = { navController.popBackStack() },
-                    refreshKey = shiftUpdated,
-                    onEdit = { shiftId ->
-                        navController.navigate("${Routes.EDIT_SHIFT}/$shiftId")
-                    },
-                    onSendQuote = { shiftId ->
-                        navController.navigate("${Routes.SEND_QUOTE}/$shiftId")
-                    },
-                    onViewQuotations = { shiftId ->
-                        navController.navigate("${Routes.VIEW_QUOTATIONS}/$shiftId")
-                    },
-                    onSendFeedback = { shiftId ->
-                        navController.navigate("${Routes.SEND_FEEDBACK}/$shiftId")
-                    },
-                    onViewReviews = { shiftId ->
-                        navController.navigate("${Routes.REVIEWS}/$shiftId")
-                    },
-                    onNavigateToSite = { shiftId, lat, lng, address, project ->
-                        val encodedAddr = java.net.URLEncoder.encode(address, "UTF-8")
-                        val encodedProj = java.net.URLEncoder.encode(project, "UTF-8")
-                        navController.navigate(
-                            "${Routes.NAVIGATION_MAP}/$shiftId/$lat/$lng/$encodedAddr/$encodedProj"
+                    composable(Routes.LOADING) {
+                        LoadingScreen(
+                            secureStorageManager = secureStorageManager,
+                            onLoggedIn = {
+                                navController.navigate(Routes.CALENDAR) {
+                                    popUpTo(Routes.LOADING) { inclusive = true }
+                                }
+                            },
+                            onNotLoggedIn = {
+                                navController.navigate(Routes.LOGIN) {
+                                    popUpTo(Routes.LOADING) { inclusive = true }
+                                }
+                            }
                         )
                     }
-                )
-            }
 
-            composable("${Routes.SEND_QUOTE}/{shiftId}") {
-                SendQuoteScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable("${Routes.VIEW_QUOTATIONS}/{shiftId}") {
-                ViewQuotationsScreen(onBack = { navController.popBackStack() })
-            }
-
-            // ===================== FILES & DOCUMENTS =====================
-
-            composable("${Routes.SHIFT_FILES}/{shiftId}") {
-                ShiftFilesScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewDocument = { fileUrl, isImage ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                    composable(Routes.LOGIN) {
+                        LoginScreen(
+                            onLoginSuccess = {
+                                navController.navigate(Routes.CALENDAR) {
+                                    popUpTo(Routes.LOGIN) { inclusive = true }
+                                }
+                            },
+                            onForgotPassword = { navController.navigate(Routes.FORGOT_PASSWORD) },
+                            onRegisterContractor = { navController.navigate(Routes.REGISTER_CONTRACTOR) },
+                            onRegisterManager = { navController.navigate(Routes.REGISTER_REST_HOME) }
+                        )
                     }
-                )
-            }
 
-            composable("${Routes.SUB_ITEM_FILES}/{shiftId}/{subItemId}") {
-                SubItemFilesScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewDocument = { fileUrl, isImage ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                    composable(Routes.REGISTER_CONTRACTOR) {
+                        RegisterContractorScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
+                        )
                     }
-                )
-            }
 
-            composable("${Routes.VIEW_DOCUMENT}?fileUrl={fileUrl}&isImage={isImage}") {
-                ViewDocumentScreen(onBack = { navController.popBackStack() })
-            }
-
-            // ===================== MESSAGES =====================
-
-            composable("${Routes.EMAIL_MESSAGES}/{shiftId}") {
-                MessagesScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewAttachment = { fileUrl ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_EMAIL_DOCUMENT}?fileUrl=$encoded")
+                    composable(Routes.REGISTER_REST_HOME) {
+                        RegisterManagerScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
+                        )
                     }
-                )
-            }
 
-            composable("${Routes.SUB_ITEM_MESSAGES}/{shiftId}/{subItemId}") {
-                SubItemMessagesScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewAttachment = { fileUrl ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_EMAIL_DOCUMENT}?fileUrl=$encoded")
+                    composable(Routes.FORGOT_PASSWORD) {
+                        ForgotPasswordScreen(
+                            onBack = { navController.popBackStack() },
+                            onResetSuccess = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
+                        )
                     }
-                )
-            }
 
-            composable("${Routes.VIEW_EMAIL_DOCUMENT}?fileUrl={fileUrl}") {
-                ViewEmailDocumentScreen(onBack = { navController.popBackStack() })
-            }
-
-            // ===================== FEEDBACK & REVIEWS =====================
-
-            composable("${Routes.SEND_FEEDBACK}/{shiftId}") {
-                SendFeedbackScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = {
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle?.set("shiftUpdated", true)
-                        navController.popBackStack()
+                    composable(Routes.GENERATE_OTP) {
+                        GenerateOTPScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = { navController.navigate(Routes.FORGOT_PASSWORD) }
+                        )
                     }
-                )
-            }
 
-            composable("${Routes.REVIEWS}/{shiftId}") {
-                ReviewsScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = {
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle?.set("shiftUpdated", true)
-                        navController.popBackStack()
-                    }
-                )
-            }
+                    // ===================== CALENDAR & SHIFTS =====================
 
-            // ===================== NOTIFICATIONS =====================
-
-            composable(Routes.NOTIFICATIONS) {
-                NotificationsScreen(
-                    onBack = { navController.popBackStack() },
-                    onNavigateToShift = { dateStr, shiftId ->
-                        navController.navigate("${Routes.DAY_DETAIL}/$dateStr?shiftId=$shiftId")
-                    },
-                    onNavigateToMessages = { shiftId ->
-                        navController.navigate("${Routes.EMAIL_MESSAGES}/$shiftId")
-                    }
-                )
-            }
-
-            // ===================== PROFILE =====================
-
-            composable(Routes.PROFILE) { backStackEntry ->
-                val viewModel: nz.co.doer.ui.profile.ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-                val profileUpdated by backStackEntry.savedStateHandle.getStateFlow("profileUpdated", false).collectAsState()
-                val profileSuccessMsg by backStackEntry.savedStateHandle.getStateFlow<String?>("profileSuccessMsg", null).collectAsState()
-                LaunchedEffect(profileUpdated) {
-                    if (profileUpdated) {
-                        viewModel.refresh()
-                        backStackEntry.savedStateHandle["profileUpdated"] = false
-                    }
-                }
-                ProfileScreen(
-                    viewModel = viewModel,
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
-                    onDeletedAccount = {
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
+                    composable(Routes.CALENDAR) {
+                        // Back on the start destination sends the app to background instead
+                        // of emptying the NavHost (which would leave splash_background visible).
+                        BackHandler(enabled = true) {
+                            activity?.moveTaskToBack(true)
                         }
-                    },
-                    onViewDocument = { fileUrl, isImage ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
-                    },
-                    successMessage = profileSuccessMsg,
-                    onSuccessMessageShown = {
-                        backStackEntry.savedStateHandle["profileSuccessMsg"] = null
+                        CalendarScreen(
+                            onDayTapped = { dateStr ->
+                                navController.navigate("${Routes.DAY_TIMELINE}/$dateStr")
+                            },
+                            onDayLongPressed = { dateStr ->
+                                navController.navigate("${Routes.ADD_SHIFT}/$dateStr")
+                            }
+                        )
                     }
-                )
-            }
 
-            composable(Routes.EDIT_PROFILE) {
-                EditProfileScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = { message ->
-                        navController.previousBackStackEntry?.savedStateHandle?.set("profileUpdated", true)
-                        navController.previousBackStackEntry?.savedStateHandle?.set("profileSuccessMsg", message)
-                        navController.popBackStack()
-                    },
-                    onViewDocument = { fileUrl, isImage ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                    composable("${Routes.DAY_TIMELINE}/{date}") {
+                        DayTimelineScreen(
+                            onBack = { navController.popBackStack() },
+                            onShiftTapped = { dateStr, shiftId ->
+                                navController.navigate("${Routes.DAY_DETAIL}/$dateStr?shiftId=$shiftId")
+                            },
+                            onViewAll = { dateStr ->
+                                navController.navigate("${Routes.DAY_DETAIL}/$dateStr")
+                            },
+                            onAddShift = { dateStr, hour ->
+                                val route = if (hour != null) {
+                                    "${Routes.ADD_SHIFT}/$dateStr?hour=$hour"
+                                } else {
+                                    "${Routes.ADD_SHIFT}/$dateStr"
+                                }
+                                navController.navigate(route)
+                            }
+                        )
                     }
-                )
-            }
 
-            // ===================== LEADS =====================
+                    composable("${Routes.DAY_DETAIL}/{date}?shiftId={shiftId}") {
+                        DayDetailScreen(
+                            onBack = { navController.popBackStack() },
+                            onViewDetails = { shiftId ->
+                                navController.navigate("${Routes.SHIFT_DETAILS}/$shiftId")
+                            },
+                            onViewFiles = { shiftId ->
+                                navController.navigate("${Routes.SHIFT_FILES}/$shiftId")
+                            },
+                            onViewQuotations = { shiftId ->
+                                navController.navigate("${Routes.VIEW_QUOTATIONS}/$shiftId")
+                            },
+                            onViewMessages = { shiftId ->
+                                navController.navigate("${Routes.EMAIL_MESSAGES}/$shiftId")
+                            },
+                            onViewSubItemMessages = { shiftId, subItemId ->
+                                navController.navigate("${Routes.SUB_ITEM_MESSAGES}/$shiftId/$subItemId")
+                            },
+                            onViewSubItemFiles = { shiftId, subItemId ->
+                                navController.navigate("${Routes.SUB_ITEM_FILES}/$shiftId/$subItemId")
+                            }
+                        )
+                    }
 
-            composable(Routes.NEW_LEADS) { backStackEntry ->
-                val viewModel: nz.co.doer.ui.leads.NewLeadsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-                val leadsUpdated by backStackEntry.savedStateHandle.getStateFlow("leadsUpdated", false).collectAsState()
-                LaunchedEffect(leadsUpdated) {
-                    if (leadsUpdated) {
-                        viewModel.refresh()
-                        backStackEntry.savedStateHandle["leadsUpdated"] = false
+                    composable("${Routes.ADD_SHIFT}/{date}?hour={hour}") {
+                        AddShiftScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = { navController.popBackStack(Routes.CALENDAR, inclusive = false) }
+                        )
+                    }
+
+                    composable("${Routes.SHIFT_DETAILS}/{shiftId}") { backStackEntry ->
+                        // Refresh the shift details when returning from Send Feedback / Reviews etc.
+                        val shiftUpdated by backStackEntry.savedStateHandle
+                            .getStateFlow("shiftUpdated", false).collectAsState()
+                        LaunchedEffect(shiftUpdated) {
+                            if (shiftUpdated) {
+                                backStackEntry.savedStateHandle["shiftUpdated"] = false
+                            }
+                        }
+                        ShiftDetailsScreen(
+                            onBack = { navController.popBackStack() },
+                            refreshKey = shiftUpdated,
+                            onEdit = { shiftId ->
+                                navController.navigate("${Routes.EDIT_SHIFT}/$shiftId")
+                            },
+                            onSendQuote = { shiftId ->
+                                navController.navigate("${Routes.SEND_QUOTE}/$shiftId")
+                            },
+                            onViewQuotations = { shiftId ->
+                                navController.navigate("${Routes.VIEW_QUOTATIONS}/$shiftId")
+                            },
+                            onSendFeedback = { shiftId ->
+                                navController.navigate("${Routes.SEND_FEEDBACK}/$shiftId")
+                            },
+                            onViewReviews = { shiftId ->
+                                navController.navigate("${Routes.REVIEWS}/$shiftId")
+                            },
+                            onNavigateToSite = { shiftId, lat, lng, address, project ->
+                                val encodedAddr = java.net.URLEncoder.encode(address, "UTF-8")
+                                val encodedProj = java.net.URLEncoder.encode(project, "UTF-8")
+                                navController.navigate(
+                                    "${Routes.NAVIGATION_MAP}/$shiftId/$lat/$lng/$encodedAddr/$encodedProj"
+                                )
+                            }
+                        )
+                    }
+
+                    composable("${Routes.SEND_QUOTE}/{shiftId}") {
+                        SendQuoteScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    composable("${Routes.VIEW_QUOTATIONS}/{shiftId}") {
+                        ViewQuotationsScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    // ===================== FILES & DOCUMENTS =====================
+
+                    composable("${Routes.SHIFT_FILES}/{shiftId}") {
+                        ShiftFilesScreen(
+                            onBack = { navController.popBackStack() },
+                            onViewDocument = { fileUrl, isImage ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                            }
+                        )
+                    }
+
+                    composable("${Routes.SUB_ITEM_FILES}/{shiftId}/{subItemId}") {
+                        SubItemFilesScreen(
+                            onBack = { navController.popBackStack() },
+                            onViewDocument = { fileUrl, isImage ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                            }
+                        )
+                    }
+
+                    composable("${Routes.VIEW_DOCUMENT}?fileUrl={fileUrl}&isImage={isImage}") {
+                        ViewDocumentScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    // ===================== MESSAGES =====================
+
+                    composable("${Routes.EMAIL_MESSAGES}/{shiftId}") {
+                        MessagesScreen(
+                            onBack = { navController.popBackStack() },
+                            onViewAttachment = { fileUrl ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_EMAIL_DOCUMENT}?fileUrl=$encoded")
+                            }
+                        )
+                    }
+
+                    composable("${Routes.SUB_ITEM_MESSAGES}/{shiftId}/{subItemId}") {
+                        SubItemMessagesScreen(
+                            onBack = { navController.popBackStack() },
+                            onViewAttachment = { fileUrl ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_EMAIL_DOCUMENT}?fileUrl=$encoded")
+                            }
+                        )
+                    }
+
+                    composable("${Routes.VIEW_EMAIL_DOCUMENT}?fileUrl={fileUrl}") {
+                        ViewEmailDocumentScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    // ===================== FEEDBACK & REVIEWS =====================
+
+                    composable("${Routes.SEND_FEEDBACK}/{shiftId}") {
+                        SendFeedbackScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = {
+                                navController.previousBackStackEntry
+                                    ?.savedStateHandle?.set("shiftUpdated", true)
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    composable("${Routes.REVIEWS}/{shiftId}") {
+                        ReviewsScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = {
+                                navController.previousBackStackEntry
+                                    ?.savedStateHandle?.set("shiftUpdated", true)
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    // ===================== NOTIFICATIONS =====================
+
+                    composable(Routes.NOTIFICATIONS) {
+                        NotificationsScreen(
+                            onBack = { navController.popBackStack() },
+                            onNavigateToShift = { dateStr, shiftId ->
+                                navController.navigate("${Routes.DAY_DETAIL}/$dateStr?shiftId=$shiftId")
+                            },
+                            onNavigateToMessages = { shiftId ->
+                                navController.navigate("${Routes.EMAIL_MESSAGES}/$shiftId")
+                            }
+                        )
+                    }
+
+                    // ===================== PROFILE =====================
+
+                    composable(Routes.PROFILE) { backStackEntry ->
+                        val viewModel: nz.co.doer.ui.profile.ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                        val profileUpdated by backStackEntry.savedStateHandle.getStateFlow("profileUpdated", false).collectAsState()
+                        val profileSuccessMsg by backStackEntry.savedStateHandle.getStateFlow<String?>("profileSuccessMsg", null).collectAsState()
+                        LaunchedEffect(profileUpdated) {
+                            if (profileUpdated) {
+                                viewModel.refresh()
+                                backStackEntry.savedStateHandle["profileUpdated"] = false
+                            }
+                        }
+                        ProfileScreen(
+                            viewModel = viewModel,
+                            onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
+                            onDeletedAccount = {
+                                navController.navigate(Routes.LOGIN) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            },
+                            onViewDocument = { fileUrl, isImage ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                            },
+                            successMessage = profileSuccessMsg,
+                            onSuccessMessageShown = {
+                                backStackEntry.savedStateHandle["profileSuccessMsg"] = null
+                            }
+                        )
+                    }
+
+                    composable(Routes.EDIT_PROFILE) {
+                        EditProfileScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = { message ->
+                                navController.previousBackStackEntry?.savedStateHandle?.set("profileUpdated", true)
+                                navController.previousBackStackEntry?.savedStateHandle?.set("profileSuccessMsg", message)
+                                navController.popBackStack()
+                            },
+                            onViewDocument = { fileUrl, isImage ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                            }
+                        )
+                    }
+
+                    // ===================== LEADS =====================
+
+                    composable(Routes.NEW_LEADS) { backStackEntry ->
+                        val viewModel: nz.co.doer.ui.leads.NewLeadsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                        val leadsUpdated by backStackEntry.savedStateHandle.getStateFlow("leadsUpdated", false).collectAsState()
+                        LaunchedEffect(leadsUpdated) {
+                            if (leadsUpdated) {
+                                viewModel.refresh()
+                                backStackEntry.savedStateHandle["leadsUpdated"] = false
+                            }
+                        }
+                        NewLeadsScreen(
+                            viewModel = viewModel,
+                            onAddLead = { navController.navigate(Routes.ADD_NEW_LEAD) },
+                            onViewLead = { leadId ->
+                                navController.navigate("${Routes.LEAD_DETAIL}/$leadId")
+                            }
+                        )
+                    }
+
+                    composable(Routes.QUOTED_LEADS) {
+                        QuotedLeadsScreen(
+                            onViewLead = { leadId ->
+                                navController.navigate("${Routes.LEAD_DETAIL}/$leadId")
+                            }
+                        )
+                    }
+
+                    composable(Routes.CONTACTED_LEADS) {
+                        ContactedLeadsScreen(
+                            onViewLead = { leadId ->
+                                navController.navigate("${Routes.LEAD_DETAIL}/$leadId")
+                            }
+                        )
+                    }
+
+                    composable(Routes.ADD_NEW_LEAD) {
+                        AddNewLeadScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = {
+                                navController.previousBackStackEntry?.savedStateHandle?.set("leadsUpdated", true)
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    composable("${Routes.LEAD_DETAIL}/{leadId}") {
+                        ViewLeadScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    // ===================== CLIENTS =====================
+
+                    composable(Routes.CLIENTS) { backStackEntry ->
+                        val viewModel: nz.co.doer.ui.clients.ClientsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                        val clientsUpdated by backStackEntry.savedStateHandle.getStateFlow("clientsUpdated", false).collectAsState()
+                        LaunchedEffect(clientsUpdated) {
+                            if (clientsUpdated) {
+                                viewModel.loadClients()
+                                backStackEntry.savedStateHandle["clientsUpdated"] = false
+                            }
+                        }
+                        ClientsScreen(
+                            viewModel = viewModel,
+                            onAddClient = { navController.navigate(Routes.ADD_NEW_CLIENT) }
+                        )
+                    }
+
+                    composable(Routes.ADD_NEW_CLIENT) {
+                        AddNewClientScreen(
+                            onBack = { navController.popBackStack() },
+                            onSuccess = {
+                                navController.previousBackStackEntry?.savedStateHandle?.set("clientsUpdated", true)
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    // ===================== CONTRACTORS =====================
+
+                    composable(Routes.ALL_CONTRACTORS) {
+                        AllContractorsScreen(
+                            onViewContractorDetail = { contractorId ->
+                                navController.navigate("${Routes.CONTRACTOR_DETAILS}/$contractorId")
+                            }
+                        )
+                    }
+
+                    composable("${Routes.CONTRACTOR_DETAILS}/{contractorId}") {
+                        ContractorDetailsScreen(
+                            onBack = { navController.popBackStack() },
+                            onViewDocument = { fileUrl, isImage ->
+                                val encoded = URLEncoder.encode(fileUrl, "UTF-8")
+                                navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
+                            }
+                        )
+                    }
+
+                    // ===================== MAIN LEADS JOBS =====================
+
+                    composable(Routes.MAIN_LEADS_JOBS) {
+                        MainLeadsJobsScreen(
+                            onShiftDetails = { shiftId ->
+                                navController.navigate("${Routes.SHIFT_DETAILS}/$shiftId")
+                            },
+                            onViewQuotations = { shiftId ->
+                                navController.navigate("${Routes.VIEW_QUOTATIONS}/$shiftId")
+                            },
+                            onViewMessages = { shiftId ->
+                                navController.navigate("${Routes.EMAIL_MESSAGES}/$shiftId")
+                            },
+                            onViewFiles = { shiftId ->
+                                navController.navigate("${Routes.SHIFT_FILES}/$shiftId")
+                            },
+                            onViewSubItemMessages = { shiftId, subItemId ->
+                                navController.navigate("${Routes.SUB_ITEM_MESSAGES}/$shiftId/$subItemId")
+                            },
+                            onViewSubItemFiles = { shiftId, subItemId ->
+                                navController.navigate("${Routes.SUB_ITEM_FILES}/$shiftId/$subItemId")
+                            }
+                        )
+                    }
+
+                    // ===================== FILO KRETO TEAM =====================
+
+                    composable(Routes.FILO_KRETO_TEAM) {
+                        FiloKretoTeamScreen()
+                    }
+
+                    // ===================== LIVE TRACKING =====================
+
+                    composable(
+                        "${Routes.NAVIGATION_MAP}/{shiftId}/{siteLat}/{siteLng}/{siteAddress}/{projectName}"
+                    ) {
+                        NavigationMapScreen(
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable(Routes.LIVE_TRACKING) {
+                        LiveTrackingScreen()
+                    }
+
+                    // ===================== TIME TRACKING DASHBOARD =====================
+
+                    composable(Routes.TIME_TRACKING) {
+                        TimeTrackingDashboardScreen()
                     }
                 }
-                NewLeadsScreen(
-                    viewModel = viewModel,
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onAddLead = { navController.navigate(Routes.ADD_NEW_LEAD) },
-                    onViewLead = { leadId ->
-                        navController.navigate("${Routes.LEAD_DETAIL}/$leadId")
-                    }
-                )
-            }
-
-            composable(Routes.QUOTED_LEADS) {
-                QuotedLeadsScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onViewLead = { leadId ->
-                        navController.navigate("${Routes.LEAD_DETAIL}/$leadId")
-                    }
-                )
-            }
-
-            composable(Routes.CONTACTED_LEADS) {
-                ContactedLeadsScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onViewLead = { leadId ->
-                        navController.navigate("${Routes.LEAD_DETAIL}/$leadId")
-                    }
-                )
-            }
-
-            composable(Routes.ADD_NEW_LEAD) {
-                AddNewLeadScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = {
-                        navController.previousBackStackEntry?.savedStateHandle?.set("leadsUpdated", true)
-                        navController.popBackStack()
-                    }
-                )
-            }
-
-            composable("${Routes.LEAD_DETAIL}/{leadId}") {
-                ViewLeadScreen(onBack = { navController.popBackStack() })
-            }
-
-            // ===================== CLIENTS =====================
-
-            composable(Routes.CLIENTS) { backStackEntry ->
-                val viewModel: nz.co.doer.ui.clients.ClientsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-                val clientsUpdated by backStackEntry.savedStateHandle.getStateFlow("clientsUpdated", false).collectAsState()
-                LaunchedEffect(clientsUpdated) {
-                    if (clientsUpdated) {
-                        viewModel.loadClients()
-                        backStackEntry.savedStateHandle["clientsUpdated"] = false
-                    }
-                }
-                ClientsScreen(
-                    viewModel = viewModel,
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onAddClient = { navController.navigate(Routes.ADD_NEW_CLIENT) }
-                )
-            }
-
-            composable(Routes.ADD_NEW_CLIENT) {
-                AddNewClientScreen(
-                    onBack = { navController.popBackStack() },
-                    onSuccess = {
-                        navController.previousBackStackEntry?.savedStateHandle?.set("clientsUpdated", true)
-                        navController.popBackStack()
-                    }
-                )
-            }
-
-            // ===================== CONTRACTORS =====================
-
-            composable(Routes.ALL_CONTRACTORS) {
-                AllContractorsScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onViewContractorDetail = { contractorId ->
-                        navController.navigate("${Routes.CONTRACTOR_DETAILS}/$contractorId")
-                    }
-                )
-            }
-
-            composable("${Routes.CONTRACTOR_DETAILS}/{contractorId}") {
-                ContractorDetailsScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewDocument = { fileUrl, isImage ->
-                        val encoded = URLEncoder.encode(fileUrl, "UTF-8")
-                        navController.navigate("${Routes.VIEW_DOCUMENT}?fileUrl=$encoded&isImage=$isImage")
-                    }
-                )
-            }
-
-            // ===================== MAIN LEADS JOBS =====================
-
-            composable(Routes.MAIN_LEADS_JOBS) {
-                MainLeadsJobsScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onShiftDetails = { shiftId ->
-                        navController.navigate("${Routes.SHIFT_DETAILS}/$shiftId")
-                    },
-                    onViewQuotations = { shiftId ->
-                        navController.navigate("${Routes.VIEW_QUOTATIONS}/$shiftId")
-                    },
-                    onViewMessages = { shiftId ->
-                        navController.navigate("${Routes.EMAIL_MESSAGES}/$shiftId")
-                    },
-                    onViewFiles = { shiftId ->
-                        navController.navigate("${Routes.SHIFT_FILES}/$shiftId")
-                    },
-                    onViewSubItemMessages = { shiftId, subItemId ->
-                        navController.navigate("${Routes.SUB_ITEM_MESSAGES}/$shiftId/$subItemId")
-                    },
-                    onViewSubItemFiles = { shiftId, subItemId ->
-                        navController.navigate("${Routes.SUB_ITEM_FILES}/$shiftId/$subItemId")
-                    }
-                )
-            }
-
-            // ===================== FILO KRETO TEAM =====================
-
-            composable(Routes.FILO_KRETO_TEAM) {
-                FiloKretoTeamScreen(onOpenDrawer = { scope.launch { drawerState.open() } })
-            }
-
-            // ===================== LIVE TRACKING =====================
-
-            composable(
-                "${Routes.NAVIGATION_MAP}/{shiftId}/{siteLat}/{siteLng}/{siteAddress}/{projectName}"
-            ) {
-                NavigationMapScreen(
-                    onBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(Routes.LIVE_TRACKING) {
-                LiveTrackingScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } }
-                )
-            }
-
-            // ===================== TIME TRACKING DASHBOARD =====================
-
-            composable(Routes.TIME_TRACKING) {
-                TimeTrackingDashboardScreen(
-                    onOpenDrawer = { scope.launch { drawerState.open() } }
-                )
             }
         }
     }

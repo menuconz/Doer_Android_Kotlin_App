@@ -13,6 +13,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -58,16 +59,18 @@ class EmailMessageRepository @Inject constructor(
         ccEmail: String,
         files: List<File>
     ): ApiResult<EmailMessageDto> = safeApiCall {
-        val fields = mutableMapOf<String, RequestBody>()
-        fields["JobId"] = jobId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["ToEmail"] = toEmail.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["Subject"] = subject.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["Body"] = body.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["CcEmail"] = ccEmail.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["SiteId"] = "1".toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["LId"] = "1".toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["UserID"] = preferencesManager.getUserId().toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["BasicAuthUid"] = preferencesManager.getBasicAuthUid().toRequestBody("text/plain".toMediaTypeOrNull())
+        val requestJson = JSONObject().apply {
+            put("UserID", preferencesManager.getUserId())
+            put("JobId", jobId)
+            put("ToEmail", toEmail)
+            put("Subject", subject)
+            put("Body", body)
+            put("CcEmail", ccEmail)
+        }.toString()
+
+        val fields = mapOf<String, RequestBody>(
+            "request" to requestJson.toRequestBody("text/plain".toMediaTypeOrNull())
+        )
 
         val attachments = files.map { file ->
             val mediaType = getMimeType(file.name).toMediaTypeOrNull()
@@ -87,17 +90,19 @@ class EmailMessageRepository @Inject constructor(
         ccEmail: String,
         files: List<File>
     ): ApiResult<EmailMessageDto> = safeApiCall {
-        val fields = mutableMapOf<String, RequestBody>()
-        fields["JobId"] = jobId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["SubItemId"] = subItemId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["ToEmail"] = toEmail.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["Subject"] = subject.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["Body"] = body.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["CcEmail"] = ccEmail.toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["SiteId"] = "1".toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["LId"] = "1".toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["UserID"] = preferencesManager.getUserId().toRequestBody("text/plain".toMediaTypeOrNull())
-        fields["BasicAuthUid"] = preferencesManager.getBasicAuthUid().toRequestBody("text/plain".toMediaTypeOrNull())
+        val requestJson = JSONObject().apply {
+            put("UserID", preferencesManager.getUserId())
+            put("JobId", jobId)
+            put("SubItemId", subItemId)
+            put("ToEmail", toEmail)
+            put("Subject", subject)
+            put("Body", body)
+            put("CcEmail", ccEmail)
+        }.toString()
+
+        val fields = mapOf<String, RequestBody>(
+            "request" to requestJson.toRequestBody("text/plain".toMediaTypeOrNull())
+        )
 
         val attachments = files.map { file ->
             val mediaType = getMimeType(file.name).toMediaTypeOrNull()

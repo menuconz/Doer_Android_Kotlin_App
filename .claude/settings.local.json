@@ -44,7 +44,17 @@
       "Bash(./gradlew :app:compileDebugKotlin)",
       "Bash(grep -r \"^\\\\s*//.*[a-zA-Z0-9_].*=\" /d/Doer_Android_Kotlin_App/app/src/main/java/nz/co/doer/ui --include=\"*.kt\")",
       "Bash(grep:*)",
-      "Bash(awk '{print $4}')"
+      "Bash(awk '{print $4}')",
+      "Bash(cmd.exe //c \"gradlew.bat :app:compileDebugKotlin 2>&1\")",
+      "Bash(xargs -I {} basename {})",
+      "Bash(java -version)",
+      "Read(//d/tmp/**)",
+      "Bash(jar tf *)",
+      "Bash(mkdir -p /tmp/comptest2)",
+      "Read(//tmp/**)",
+      "Bash(unzip -o /c/Users/ankit/.gradle/caches/modules-2/files-2.1/androidx.compose.foundation/foundation-android/1.9.4/540f4fb28a66e9b5d9e6f49127ea5f3931c2f95b/foundation-android-1.9.4-sources.jar \"androidMain/androidx/compose/foundation/SystemGestureExclusion.android.kt\")",
+      "Bash(pip3 install *)",
+      "Bash(python *)"
     ]
   }
 }

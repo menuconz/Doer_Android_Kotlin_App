@@ -14,21 +14,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,7 +43,6 @@ private val BlueAccent = Color(0xFF007AFF)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FiloKretoTeamScreen(
-    onOpenDrawer: () -> Unit,
     viewModel: FiloKretoTeamViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -69,24 +62,11 @@ fun FiloKretoTeamScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("FiloKreto Team", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
+    Box(modifier = Modifier.fillMaxSize()) {
         // Main Grid layout matching MAUI: Grid Padding="20" RowSpacing="10"
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -182,5 +162,9 @@ fun FiloKretoTeamScreen(
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }

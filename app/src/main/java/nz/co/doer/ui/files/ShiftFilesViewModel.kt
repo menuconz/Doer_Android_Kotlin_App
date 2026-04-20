@@ -15,6 +15,7 @@ import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.remote.ApiResult
 import nz.co.doer.data.remote.dto.FileUploadModelDto
 import nz.co.doer.data.repository.ShiftRepository
+import retrofit2.HttpException
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
@@ -31,6 +32,7 @@ data class ShiftFilesUiState(
     val uploadProgress: Double = 0.0,
     val uploadStatusText: String = "",
     val showUploadOptions: Boolean = false,
+    val showNoFilesDialog: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null
 )
@@ -90,21 +92,38 @@ class ShiftFilesViewModel @Inject constructor(
                         fileCountText = files.size,
                         isEmpty = files.isEmpty(),
                         hasFiles = files.isNotEmpty(),
-                        isLoading = false
+                        isLoading = false,
+                        showNoFilesDialog = files.isEmpty()
                     )
                 }
                 is ApiResult.Error -> {
-                    Timber.e("Failed to load shift files: ${result.message}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isEmpty = true,
-                        hasFiles = false,
-                        errorMessage = result.message
-                    )
+                    // Backend returns 404 when no files exist for the shift — treat as empty, not an error
+                    if ((result.exception as? HttpException)?.code() == 404) {
+                        _uiState.value = _uiState.value.copy(
+                            files = emptyList(),
+                            fileCountText = 0,
+                            isEmpty = true,
+                            hasFiles = false,
+                            isLoading = false,
+                            showNoFilesDialog = true
+                        )
+                    } else {
+                        Timber.e("Failed to load shift files: ${result.message}")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            isEmpty = true,
+                            hasFiles = false,
+                            errorMessage = result.message
+                        )
+                    }
                 }
                 is ApiResult.Loading -> {}
             }
         }
+    }
+
+    fun dismissNoFilesDialog() {
+        _uiState.value = _uiState.value.copy(showNoFilesDialog = false)
     }
 
     fun refresh() {

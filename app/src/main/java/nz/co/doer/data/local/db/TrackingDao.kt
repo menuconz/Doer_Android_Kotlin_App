@@ -28,6 +28,10 @@ interface TrackingDao {
     @Query("SELECT COUNT(*) FROM pending_clock_events WHERE synced = 0")
     suspend fun getUnsyncedClockEventCount(): Int
 
+    /** Purge all pending clock events for a shift that no longer exists on the server. */
+    @Query("DELETE FROM pending_clock_events WHERE shiftId = :shiftId")
+    suspend fun deleteClockEventsForShift(shiftId: Int)
+
     // ========== Location Points ==========
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -47,6 +51,10 @@ interface TrackingDao {
 
     @Query("SELECT COUNT(*) FROM pending_location_points WHERE synced = 0")
     suspend fun getUnsyncedLocationPointCount(): Int
+
+    /** Purge all pending location points for a shift that no longer exists on the server. */
+    @Query("DELETE FROM pending_location_points WHERE shiftId = :shiftId")
+    suspend fun deleteLocationPointsForShift(shiftId: Int)
 
     // ========== Notifications ==========
 

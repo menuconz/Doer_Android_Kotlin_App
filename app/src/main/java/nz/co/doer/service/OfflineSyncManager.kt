@@ -20,6 +20,10 @@ import nz.co.doer.data.remote.dto.LocationBatchDto
 import nz.co.doer.data.remote.dto.LocationPointDto
 import nz.co.doer.data.remote.dto.TrackingNotificationDto
 import nz.co.doer.data.repository.LocationTrackingRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import retrofit2.HttpException
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -44,6 +48,21 @@ class OfflineSyncManager @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) {
     private val dao = database.trackingDao()
+
+    /**
+     * Emits a shiftId whenever the server returns 404 for a write against that shift
+     * (i.e. the shift was deleted). TrackingManager observes this to tear down the
+     * active tracker immediately instead of retrying forever.
+     */
+    private val _shiftDeletedEvents = MutableSharedFlow<Int>(extraBufferCapacity = 4)
+    val shiftDeletedEvents: SharedFlow<Int> = _shiftDeletedEvents.asSharedFlow()
+
+    private suspend fun handleShiftNotFound(shiftId: Int) {
+        Timber.w("Server returned 404 for shift $shiftId — purging pending data and notifying tracker")
+        dao.deleteClockEventsForShift(shiftId)
+        dao.deleteLocationPointsForShift(shiftId)
+        _shiftDeletedEvents.emit(shiftId)
+    }
 
     // ========== Queue Events (offline-first write) ==========
 
@@ -209,12 +228,17 @@ class OfflineSyncManager @Inject constructor(
                     siteId = 1,
                     basicAuthUid = basicAuthUid
                 )
-                when (locationTrackingRepository.recordClockEvent(dto)) {
+                when (val res = locationTrackingRepository.recordClockEvent(dto)) {
                     is ApiResult.Success -> {
                         dao.markClockEventSynced(event.id)
                         Timber.d("Synced clock event ${event.id}: ${event.eventType}")
                     }
                     is ApiResult.Error -> {
+                        if ((res.exception as? HttpException)?.code() == 404) {
+                            handleShiftNotFound(event.shiftId)
+                            // Events were just purged — stop processing the rest of this batch
+                            return false
+                        }
                         dao.incrementClockEventSyncAttempt(event.id)
                         allSuccess = false
                     }
@@ -266,12 +290,16 @@ class OfflineSyncManager @Inject constructor(
                     siteId = 1,
                     basicAuthUid = basicAuthUid
                 )
-                when (locationTrackingRepository.sendLocationBatch(dto)) {
+                when (val res = locationTrackingRepository.sendLocationBatch(dto)) {
                     is ApiResult.Success -> {
                         dao.markLocationPointsSynced(batch.map { it.id })
                         Timber.d("Synced ${batch.size} location points for shift $shiftId")
                     }
                     is ApiResult.Error -> {
+                        if ((res.exception as? HttpException)?.code() == 404) {
+                            handleShiftNotFound(shiftId)
+                            return false
+                        }
                         allSuccess = false
                     }
                     is ApiResult.Loading -> {}

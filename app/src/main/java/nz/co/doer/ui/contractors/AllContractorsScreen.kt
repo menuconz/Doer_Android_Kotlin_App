@@ -20,8 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -29,17 +27,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,7 +71,6 @@ private val ColAction = 150.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AllContractorsScreen(
-    onOpenDrawer: () -> Unit,
     onViewContractorDetail: (userId: String) -> Unit,
     viewModel: AllContractorsViewModel = hiltViewModel()
 ) {
@@ -239,25 +231,10 @@ fun AllContractorsScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            // Matching MAUI: Title="All Contractors"
-            TopAppBar(
-                title = { Text("All Contractors") },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
+    Box(modifier = Modifier.fillMaxSize()) {
         if (state.isLoading) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
@@ -266,7 +243,6 @@ fun AllContractorsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .background(BgColor)
             ) {
                 // Matching MAUI: Filter button — Frame White, Shadow, CornerRadius=20
@@ -397,6 +373,10 @@ fun AllContractorsScreen(
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 

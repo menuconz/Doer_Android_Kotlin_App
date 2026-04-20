@@ -630,6 +630,15 @@ class ShiftDetailsViewModel @Inject constructor(
         val shift = _uiState.value.shift ?: return
         _uiState.value = _uiState.value.copy(isUpdating = true, errorMessage = null)
         viewModelScope.launch {
+            // If the contractor is currently clocked in at this shift, clock them out first
+            // so tracking stops and a CLOCK_OUT event is recorded with reason REJECTED.
+            if (trackingManager.activeShiftId.value == shift.id &&
+                trackingManager.trackingState.value != DoerTrackingState.IDLE &&
+                trackingManager.trackingState.value != DoerTrackingState.CLOCKED_OUT
+            ) {
+                trackingManager.clockOut(reasonCode = "JOB_REJECTED")
+            }
+
             val userId = preferencesManager.getUserId()
             val nowUtc = nz.co.doer.util.Constants.nowNz()
             val updated = shift.copy(

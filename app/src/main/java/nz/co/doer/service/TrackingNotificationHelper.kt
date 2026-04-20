@@ -52,6 +52,15 @@ class TrackingNotificationHelper @Inject constructor(
 
     // ========== Public notification triggers ==========
 
+    fun onShiftDeleted(shiftId: Int, projectName: String) {
+        val label = if (projectName.isNotBlank()) "\"$projectName\"" else "the active job"
+        showLocalNotification(
+            title = "Shift removed",
+            body = "$label was deleted — tracking has been stopped.",
+            notificationId = NOTIF_ID_SHIFT_DELETED
+        )
+    }
+
     fun onClockIn(shiftId: Int, latitude: Double, longitude: Double, projectName: String) {
         showLocalNotification(
             title = "Clocked In",
@@ -274,6 +283,7 @@ class TrackingNotificationHelper @Inject constructor(
         const val NOTIF_ID_THRESHOLD_EXCEEDED = 2006
         const val NOTIF_ID_CLOCK_OUT = 2007
         const val NOTIF_ID_AUTO_CLOCK_IN = 2008
+        const val NOTIF_ID_SHIFT_DELETED = 2009
 
         // Notification types (sent to server)
         const val TYPE_CLOCK_IN = "TRACKING_CLOCK_IN"

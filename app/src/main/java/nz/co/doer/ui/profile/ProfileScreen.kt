@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -24,14 +22,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,7 +54,6 @@ private const val PROFILE_DOCS_SERVER_URL = "https://doerapi.doer.nz"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
-    onOpenDrawer: () -> Unit,
     onEditProfile: () -> Unit,
     onDeletedAccount: () -> Unit,
     onViewDocument: (String, Boolean) -> Unit = { _, _ -> },
@@ -123,36 +116,23 @@ fun ProfileScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Profile") },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
+    Box(Modifier.fillMaxSize()) {
         if (state.isLoading || state.isDeleting) {
             Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
             }
         } else {
-            val user = state.user ?: return@Scaffold
-
+            val user = state.user
+            if (user == null) {
+                // No data yet — render nothing; snackbar still available below.
+            } else {
             // MAUI: ScrollView > StackLayout Padding="20,30,20,30" Spacing="20" BackgroundColor="#F8F9FA"
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .background(BgColor)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 30.dp)
@@ -392,7 +372,12 @@ fun ProfileScreen(
 
                 Spacer(Modifier.height(30.dp))
             }
+            }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 

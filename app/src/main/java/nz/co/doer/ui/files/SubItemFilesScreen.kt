@@ -109,6 +109,20 @@ fun SubItemFilesScreen(
         }
     }
 
+    // Popup when there are no files for this sub-item (replaces the HTTP 404 snackbar)
+    if (state.showNoFilesDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissNoFilesDialog() },
+            title = { Text("No Files") },
+            text = { Text("No files are available for this stage yet.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissNoFilesDialog() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     // Matching MAUI: ActionSheet "Select Upload Option"
     if (state.showUploadOptions) {
         AlertDialog(
