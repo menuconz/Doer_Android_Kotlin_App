@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -18,6 +19,7 @@ import nz.co.doer.data.remote.dto.ClientDto
 import nz.co.doer.data.remote.dto.ContractType
 import nz.co.doer.data.remote.dto.HSRequiredStatus
 import nz.co.doer.data.remote.dto.Invoice
+import nz.co.doer.data.remote.dto.JobCategory
 import nz.co.doer.data.remote.dto.ShiftDto
 import nz.co.doer.data.remote.dto.ShiftStatus
 import nz.co.doer.data.remote.dto.ShiftSubItemDto
@@ -49,7 +51,8 @@ data class JobRowItem(
     val isExpanded: Boolean = false,
     val isOwner: Boolean = false,
     val isAddSubItem: Boolean = false,
-    val newSubItemName: String = ""
+    val newSubItemName: String = "",
+    val newSubItemCategory: Int = 1 // 1 = Primary, 2 = Secondary (default Primary)
 )
 
 enum class FilterColumnType { ItemColumn, SubItemColumn }
@@ -74,17 +77,36 @@ data class FilterRow(
                 (value.isNotBlank() || selectedCondition == "is empty" || selectedCondition == "is not empty")
 }
 
+// A single card in the date-based Kanban — represents one subitem.
+data class KanbanCard(
+    val subItem: ShiftSubItemDto,
+    val parentShift: ShiftDto,
+    val projectName: String,
+    val displayDateTime: String,
+    val hasUpdates: Boolean,
+    val statusColor: Long,
+    val statusText: String
+)
+
+// A grouped section within a column (used in "Today" column for Primary/Secondary split).
+data class KanbanSection(
+    val title: String? = null,
+    val cards: List<KanbanCard>
+)
+
+// A column in the date-based Kanban.
 data class KanbanColumn(
     val title: String,
     val headerColor: Long,
-    val items: List<JobRowItem>
+    val sections: List<KanbanSection> = emptyList(),
+    val totalCount: Int = 0
 )
 
 // Edit dialog types
 enum class EditDialogType {
     None, TextEditor, DateTimePicker, ContractTypePicker, InvoiceStatusPicker,
     HSFormStatusPicker, SubItemHSPicker, SubItemStatusPicker, ClientPicker,
-    AddressSearch, SubItemDatePicker
+    AddressSearch, SubItemDatePicker, JobCategoryPicker, ActualInvoiceEditor
 }
 
 data class EditDialogState(
@@ -119,6 +141,7 @@ data class MainLeadsJobsUiState(
     // Role flags
     val isOwner: Boolean = false,
     val isCaregiver: Boolean = false,
+    val isEmployee: Boolean = false,
     // View mode
     val selectedViewMode: String = "Main Table",
     val isListView: Boolean = true,
@@ -148,8 +171,85 @@ class MainLeadsJobsViewModel @Inject constructor(
     private val shiftRepository: ShiftRepository,
     private val clientRepository: ClientRepository,
     private val preferencesManager: PreferencesManager,
-    private val googlePlacesService: GooglePlacesService
+    private val googlePlacesService: GooglePlacesService,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache
 ) : ViewModel() {
+
+    // ──────────────── Cache-aware label/color helpers ────────────────
+    // These read from BoardConfigCache when available, fall back to the static
+    // companion methods below. Use these instead of the static getXxxText/getXxxColor
+    // when you want admin-renamed labels to take effect.
+
+    fun statusText(statusId: Int, hasQuotations: Boolean): String =
+        boardConfigCache.displayName("ShiftStatus", statusId) { getStatusText(statusId, hasQuotations) }
+
+    fun statusColor(statusId: Int, hasQuotations: Boolean): Long =
+        boardConfigCache.color("ShiftStatus", statusId) { getStatusColor(statusId, hasQuotations) }
+
+    fun invoiceText(value: Int?): String =
+        boardConfigCache.displayName("InvoiceStatus", value ?: -1) { getInvoiceText(value) }
+
+    fun invoiceColor(value: Int?): Long =
+        boardConfigCache.color("InvoiceStatus", value ?: -1) { getInvoiceColor(value) }
+
+    fun contractTypeText(value: Int?): String =
+        boardConfigCache.displayName("ContractType", value ?: -1) { getContractTypeText(value) }
+
+    fun contractTypeColor(value: Int?): Long =
+        boardConfigCache.color("ContractType", value ?: -1) { getContractTypeColor(value) }
+
+    fun hsFormText(value: Int?): String =
+        boardConfigCache.displayName("HSRequired", value ?: -1) { getHSFormText(value) }
+
+    fun hsFormColor(value: Int?): Long =
+        boardConfigCache.color("HSRequired", value ?: -1) { getHSFormColor(value) }
+
+    fun subItemStatusText(value: Int): String =
+        boardConfigCache.displayName("SubItemStatus", value) { getSubItemStatusText(value) }
+
+    fun subItemStatusColor(value: Int): Long =
+        boardConfigCache.color("SubItemStatus", value) { getSubItemStatusColor(value) }
+
+    fun jobCategoryText(value: Int): String =
+        boardConfigCache.displayName("JobCategory", value) {
+            if (value == JobCategory.Secondary.value) "Secondary" else "Primary"
+        }
+
+    fun jobCategoryColor(value: Int): Long =
+        boardConfigCache.color("JobCategory", value) {
+            if (value == JobCategory.Secondary.value) 0xFF9E9E9EL else 0xFF1976D2L
+        }
+
+    // Dynamic dropdown option lists — used by picker dialogs. If cache is empty,
+    // returns the static fallback list.
+    fun dynamicContractTypeOptions(): List<StatusOption> =
+        cacheOrFallback("ContractType", contractTypeOptions)
+
+    fun dynamicInvoiceStatusOptions(): List<StatusOption> =
+        cacheOrFallback("InvoiceStatus", invoiceStatusOptions)
+
+    fun dynamicHsFormOptions(): List<StatusOption> =
+        cacheOrFallback("HSRequired", hsFormOptions)
+
+    fun dynamicSubItemStatusOptions(): List<StatusOption> =
+        cacheOrFallback("SubItemStatus", subItemStatusOptions)
+
+    fun dynamicJobCategoryOptions(): List<StatusOption> =
+        cacheOrFallback("JobCategory", jobCategoryOptions)
+
+    private fun cacheOrFallback(columnName: String, fallback: List<StatusOption>): List<StatusOption> {
+        val cached = boardConfigCache.getOptions(columnName)
+        if (cached.isEmpty()) return fallback
+        return cached.map { opt ->
+            StatusOption(
+                name = opt.displayName,
+                value = opt.value,
+                color = boardConfigCache.parseHexColor(opt.color,
+                    fallback.firstOrNull { it.value == opt.value }?.color ?: 0xFFC4C4C4L)
+            )
+        }
+    }
+
 
     private val _uiState = MutableStateFlow(MainLeadsJobsUiState())
     val uiState: StateFlow<MainLeadsJobsUiState> = _uiState.asStateFlow()
@@ -181,15 +281,27 @@ class MainLeadsJobsViewModel @Inject constructor(
             val isManager = preferencesManager.isManager.first()
             val isAdmin = preferencesManager.isAdmin.first()
             val isCaregiver = preferencesManager.isCaregiver.first()
+            val isEmployee = preferencesManager.isEmployee.first()
             val isOwner = isManager || isAdmin
             _uiState.value = _uiState.value.copy(
                 isOwner = isOwner,
                 isCaregiver = isCaregiver,
+                isEmployee = isEmployee,
                 filterColumns = buildFilterColumns()
             )
             loadClients()
             updateMonthDisplay()
             loadJobs()
+        }
+
+        // React to admin renaming dropdown labels/colours: re-map rows so the new
+        // values appear here without forcing the user to navigate away and back.
+        viewModelScope.launch {
+            boardConfigCache.options.drop(1).collect {
+                if (originalJobs.isNotEmpty()) {
+                    loadJobs()
+                }
+            }
         }
     }
 
@@ -338,6 +450,8 @@ class MainLeadsJobsViewModel @Inject constructor(
     }
 
     private suspend fun mapShiftsToRows(shifts: List<ShiftDto>, isOwner: Boolean): List<JobRowItem> {
+        // Employees can also add subitems even though they're caregivers.
+        val canAddSubItem = isOwner || _uiState.value.isEmployee
         return shifts.map { shift ->
             // Fetch quotations for this shift to get accepted quote amount
             val quotations = when (val result = shiftRepository.getQuotationsByJobId(shift.id)) {
@@ -355,17 +469,17 @@ class MainLeadsJobsViewModel @Inject constructor(
             )
             JobRowItem(
                 shift = enrichedShift,
-                statusDisplayText = getStatusText(shift.statusId, hasQuotations),
-                statusColor = getStatusColor(shift.statusId, hasQuotations),
-                invoiceDisplayText = getInvoiceText(shift.invoiceStatus),
-                invoiceColor = getInvoiceColor(shift.invoiceStatus),
-                contractTypeDisplayText = getContractTypeText(shift.contractType),
-                contractTypeColor = getContractTypeColor(shift.contractType),
-                hsFormText = getHSFormText(shift.hsForms),
-                hsFormColor = getHSFormColor(shift.hsForms),
+                statusDisplayText = statusText(shift.statusId, hasQuotations),
+                statusColor = statusColor(shift.statusId, hasQuotations),
+                invoiceDisplayText = invoiceText(shift.invoiceStatus),
+                invoiceColor = invoiceColor(shift.invoiceStatus),
+                contractTypeDisplayText = contractTypeText(shift.contractType),
+                contractTypeColor = contractTypeColor(shift.contractType),
+                hsFormText = hsFormText(shift.hsForms),
+                hsFormColor = hsFormColor(shift.hsForms),
                 subItems = shift.shiftSubItems ?: emptyList(),
                 isOwner = isOwner,
-                isAddSubItem = isOwner
+                isAddSubItem = canAddSubItem
             )
         }
     }
@@ -409,6 +523,7 @@ class MainLeadsJobsViewModel @Inject constructor(
             "Instructions" -> compareBy { (it.shift.instructions).lowercase() }
             "Amount" -> compareBy { it.shift.amount ?: 0.0 }
             "AcceptedQuoteAmount" -> compareBy { it.shift.acceptedQuoteAmount ?: 0.0 }
+            "ActualInvoiceAmount" -> compareBy { it.shift.actualInvoiceAmount ?: 0.0 }
             "StatusMessage" -> compareBy { it.statusDisplayText.lowercase() }
             else -> compareBy { it.shift.projectName.lowercase() }
         }
@@ -467,24 +582,128 @@ class MainLeadsJobsViewModel @Inject constructor(
         }
     }
 
+    // Date-based Kanban: Yesterday / Today (split into Primary + Secondary) / Next 5 Days.
+    // Each card represents a single subitem. The driver date is the subitem's dateStarted;
+    // if that's missing we fall back to the parent shift's shiftStartTime/durationFrom.
     private fun buildKanban() {
         val jobs = _uiState.value.jobs
         if (jobs.isEmpty()) {
             _uiState.value = _uiState.value.copy(kanbanColumns = emptyList())
             return
         }
-        val columns = jobs
-            .groupBy { it.shift.contractType ?: 0 }
-            .toSortedMap()
-            .map { (_, groupJobs) ->
-                val first = groupJobs.first()
-                KanbanColumn(
-                    title = "${first.contractTypeDisplayText} / ${groupJobs.size}",
-                    headerColor = first.contractTypeColor,
-                    items = groupJobs
+
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
+        val nextWindowStart = today.plusDays(1)
+        val nextWindowEnd = today.plusDays(5)
+
+        data class CardWithDate(val card: KanbanCard, val date: LocalDate)
+
+        val cardsWithDates = jobs.flatMap { row ->
+            row.subItems.mapNotNull { subItem ->
+                val date = resolveSubItemDate(subItem, row.shift) ?: return@mapNotNull null
+                // Use cache-aware lookup so admin-renamed labels and colors propagate to Kanban cards.
+                val cardStatusText = subItemStatusText(subItem.status)
+                val cardStatusColor = subItemStatusColor(subItem.status)
+                val card = KanbanCard(
+                    subItem = subItem,
+                    parentShift = row.shift,
+                    projectName = row.shift.projectName,
+                    displayDateTime = formatKanbanDateTime(subItem.dateStarted, row.shift.shiftStartTime),
+                    hasUpdates = isRecentlyUpdated(subItem.modifiedDate),
+                    statusColor = cardStatusColor,
+                    statusText = cardStatusText.ifBlank { "—" }
                 )
+                CardWithDate(card, date)
             }
+        }
+
+        val yesterdayCards = cardsWithDates
+            .filter { it.date == yesterday }
+            .map { it.card }
+            .sortedBy { it.subItem.dateStarted }
+
+        val todayCards = cardsWithDates
+            .filter { it.date == today }
+            .map { it.card }
+        val todayPrimary = todayCards
+            .filter { it.subItem.jobCategory == JobCategory.Primary.value }
+            .sortedBy { it.subItem.dateStarted }
+        val todaySecondary = todayCards
+            .filter { it.subItem.jobCategory == JobCategory.Secondary.value }
+            .sortedBy { it.subItem.dateStarted }
+
+        val nextCards = cardsWithDates
+            .filter { !it.date.isBefore(nextWindowStart) && !it.date.isAfter(nextWindowEnd) }
+            .sortedBy { it.date }
+            .map { it.card }
+
+        val columns = listOf(
+            KanbanColumn(
+                title = "Yesterday",
+                headerColor = 0xFFFF6D3B,
+                sections = listOf(KanbanSection(cards = yesterdayCards)),
+                totalCount = yesterdayCards.size
+            ),
+            KanbanColumn(
+                title = "Available Today",
+                headerColor = 0xFF1976D2,
+                sections = listOf(
+                    KanbanSection(title = "Primary Jobs", cards = todayPrimary),
+                    KanbanSection(title = "Secondary Jobs", cards = todaySecondary)
+                ),
+                totalCount = todayCards.size
+            ),
+            KanbanColumn(
+                title = "Next 5 Days",
+                headerColor = 0xFF00C875,
+                sections = listOf(KanbanSection(cards = nextCards)),
+                totalCount = nextCards.size
+            )
+        )
+
         _uiState.value = _uiState.value.copy(kanbanColumns = columns)
+    }
+
+    private fun resolveSubItemDate(subItem: ShiftSubItemDto, shift: ShiftDto): LocalDate? {
+        return parseDateOrNull(subItem.dateStarted)
+            ?: parseDateOrNull(subItem.dateCompleted)
+            ?: parseDateOrNull(shift.shiftStartTime)
+            ?: parseDateOrNull(shift.durationFrom)
+    }
+
+    private fun parseDateOrNull(dateStr: String?): LocalDate? {
+        if (dateStr.isNullOrBlank()) return null
+        return try {
+            LocalDateTime.parse(dateStr.replace("Z", "")).toLocalDate()
+        } catch (_: Exception) {
+            try {
+                LocalDate.parse(dateStr.substring(0, 10))
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    private fun isRecentlyUpdated(modifiedDate: String?): Boolean {
+        if (modifiedDate.isNullOrBlank()) return false
+        return try {
+            val modified = LocalDateTime.parse(modifiedDate.replace("Z", ""))
+            val cutoff = LocalDateTime.now().minusHours(24)
+            modified.isAfter(cutoff)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun formatKanbanDateTime(subItemDate: String?, shiftStart: String?): String {
+        val source = subItemDate?.takeIf { it.isNotBlank() } ?: shiftStart ?: return ""
+        return try {
+            val dt = LocalDateTime.parse(source.replace("Z", ""))
+            dt.format(DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a"))
+        } catch (_: Exception) {
+            source
+        }
     }
 
     // ──────────────── Inline Edit Dialogs ────────────────
@@ -526,6 +745,22 @@ class MainLeadsJobsViewModel @Inject constructor(
                 title = "Job Description",
                 fieldName = "Instructions",
                 textValue = job.shift.instructions,
+                selectedShiftId = shiftId
+            )
+        )
+    }
+
+    // Open the editor for Actual Invoice Amount. Only Admin/Manager (isOwner) can change it.
+    fun editActualInvoice(shiftId: Int) {
+        if (!_uiState.value.isOwner) return
+        val job = findJob(shiftId) ?: return
+        val current = job.shift.actualInvoiceAmount?.let { String.format("%.2f", it) } ?: ""
+        _uiState.value = _uiState.value.copy(
+            editDialog = EditDialogState(
+                type = EditDialogType.TextEditor,
+                title = "Actual Invoice Amount",
+                fieldName = "ActualInvoiceAmount",
+                textValue = current,
                 selectedShiftId = shiftId
             )
         )
@@ -599,7 +834,8 @@ class MainLeadsJobsViewModel @Inject constructor(
     }
 
     fun editSubItemHSStatus(subItemId: Int) {
-        if (_uiState.value.isCaregiver) return
+        // Employees can update sub-item fields; plain caregivers cannot.
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
         _uiState.value = _uiState.value.copy(
             editDialog = EditDialogState(
                 type = EditDialogType.SubItemHSPicker,
@@ -610,7 +846,9 @@ class MainLeadsJobsViewModel @Inject constructor(
     }
 
     fun editSubItemStatus(subItemId: Int) {
-        if (_uiState.value.isCaregiver) return
+        // Employees can change subitem status (including marking Done) even if they're caregivers.
+        // Plain caregivers (without Employee flag) cannot.
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
         _uiState.value = _uiState.value.copy(
             editDialog = EditDialogState(
                 type = EditDialogType.SubItemStatusPicker,
@@ -646,7 +884,7 @@ class MainLeadsJobsViewModel @Inject constructor(
     }
 
     fun editSubItemDateStarted(shiftId: Int, subItemId: Int) {
-        if (_uiState.value.isCaregiver) return
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
         val subItem = findSubItem(subItemId) ?: return
         val (date, hour, minute) = if (!subItem.dateStarted.isNullOrBlank()) {
             try {
@@ -758,6 +996,14 @@ class MainLeadsJobsViewModel @Inject constructor(
             "ProjectName" -> job.shift.copy(projectName = dialog.textValue)
             "FinalMeasure" -> job.shift.copy(finalMeasure = dialog.textValue)
             "Instructions" -> job.shift.copy(instructions = dialog.textValue)
+            "ActualInvoiceAmount" -> {
+                if (!_uiState.value.isOwner) return  // server-side guard exists too, but bail early
+                val parsed = dialog.textValue.trim()
+                    .removePrefix("$")
+                    .replace(",", "")
+                    .toDoubleOrNull()
+                job.shift.copy(actualInvoiceAmount = parsed)
+            }
             else -> return
         }
         dismissEditDialog()
@@ -813,6 +1059,24 @@ class MainLeadsJobsViewModel @Inject constructor(
         updateSubItem(subItem.copy(status = value))
     }
 
+    fun editSubItemJobCategory(subItemId: Int) {
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
+        _uiState.value = _uiState.value.copy(
+            editDialog = EditDialogState(
+                type = EditDialogType.JobCategoryPicker,
+                title = "Job Category",
+                selectedSubItemId = subItemId
+            )
+        )
+    }
+
+    fun selectSubItemJobCategory(value: Int) {
+        val dialog = _uiState.value.editDialog
+        val subItem = findSubItem(dialog.selectedSubItemId) ?: return
+        dismissEditDialog()
+        updateSubItem(subItem.copy(jobCategory = value))
+    }
+
     private fun updateShift(shift: ShiftDto) {
         viewModelScope.launch {
             val userId = preferencesManager.getUserId()
@@ -849,14 +1113,14 @@ class MainLeadsJobsViewModel @Inject constructor(
             if (row.shift.id != enrichedShift.id) return row
             return row.copy(
                 shift = shiftWithQuotations.copy(shiftSubItems = row.shift.shiftSubItems),
-                statusDisplayText = getStatusText(enrichedShift.statusId, hasQuotations),
-                statusColor = getStatusColor(enrichedShift.statusId, hasQuotations),
-                invoiceDisplayText = getInvoiceText(enrichedShift.invoiceStatus),
-                invoiceColor = getInvoiceColor(enrichedShift.invoiceStatus),
-                contractTypeDisplayText = getContractTypeText(enrichedShift.contractType),
-                contractTypeColor = getContractTypeColor(enrichedShift.contractType),
-                hsFormText = getHSFormText(enrichedShift.hsForms),
-                hsFormColor = getHSFormColor(enrichedShift.hsForms)
+                statusDisplayText = statusText(enrichedShift.statusId, hasQuotations),
+                statusColor = statusColor(enrichedShift.statusId, hasQuotations),
+                invoiceDisplayText = invoiceText(enrichedShift.invoiceStatus),
+                invoiceColor = invoiceColor(enrichedShift.invoiceStatus),
+                contractTypeDisplayText = contractTypeText(enrichedShift.contractType),
+                contractTypeColor = contractTypeColor(enrichedShift.contractType),
+                hsFormText = hsFormText(enrichedShift.hsForms),
+                hsFormColor = hsFormColor(enrichedShift.hsForms)
             )
         }
 
@@ -910,6 +1174,14 @@ class MainLeadsJobsViewModel @Inject constructor(
         )
     }
 
+    fun updateNewSubItemCategory(shiftId: Int, category: Int) {
+        _uiState.value = _uiState.value.copy(
+            jobs = _uiState.value.jobs.map { row ->
+                if (row.shift.id == shiftId) row.copy(newSubItemCategory = category) else row
+            }
+        )
+    }
+
     fun addNewSubItem(shiftId: Int) {
         val job = findJob(shiftId) ?: return
         val name = job.newSubItemName.trim()
@@ -926,6 +1198,7 @@ class MainLeadsJobsViewModel @Inject constructor(
                 subitem = name,
                 hsRequired = HSRequiredStatus.NoHS.value,
                 status = 0,
+                jobCategory = job.newSubItemCategory,
                 createdBy = userId
             )
             when (val result = shiftRepository.addSubItems(newSubItem)) {
@@ -1379,6 +1652,11 @@ class MainLeadsJobsViewModel @Inject constructor(
             StatusOption("Working on it", SubItemStatus.WorkingOnIt.value, 0xFF00C875),
             StatusOption("Stuck", SubItemStatus.Stuck.value, 0xFFFF0000),
             StatusOption("Done", SubItemStatus.Done.value, 0xFFFFCB00)
+        )
+
+        val jobCategoryOptions: List<StatusOption> = listOf(
+            StatusOption("Primary", JobCategory.Primary.value, 0xFF1976D2),
+            StatusOption("Secondary", JobCategory.Secondary.value, 0xFF9E9E9E)
         )
     }
 }

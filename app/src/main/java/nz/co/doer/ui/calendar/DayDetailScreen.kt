@@ -181,6 +181,15 @@ fun DayDetailScreen(
             },
             onDismiss = viewModel::dismissDialog
         )
+        DayDetailDialog.SUB_ITEM_CATEGORY -> {
+            val items = viewModel.dynamicJobCategoryItems()
+            OptionListDialog(
+                title = "Select Job Category",
+                items = items.map { Triple(it.id, it.name, it.color) },
+                onSelect = { id -> viewModel.selectSubItemJobCategory(id) },
+                onDismiss = viewModel::dismissDialog
+            )
+        }
         DayDetailDialog.SUB_ITEM_DATE -> DateTimeDialog(
             date = state.editDate,
             time = state.editTime,
@@ -492,12 +501,14 @@ private object ColW {
     val jobDescription = 200.dp
     val quote = 180.dp
     val contractorQuote = 180.dp
+    val actualInvoice = 180.dp
     val status = 180.dp
     val files = 100.dp
     val actions = 225.dp
     val subItem = 200.dp
     val subHs = 140.dp
     val subStatus = 120.dp
+    val subCategory = 130.dp
     val subDateStarted = 140.dp
     val subDateCompleted = 140.dp
     val subFiles = 80.dp
@@ -526,6 +537,7 @@ private fun DataGridHeaderRow(
             SortableHeaderCell("Quote (Sent to Client)", ColW.quote, "Amount", onSort, getSortIcon)
         }
         SortableHeaderCell("Contractor Quote", ColW.contractorQuote, "AcceptedQuoteAmount", onSort, getSortIcon)
+        SortableHeaderCell("Actual Invoice", ColW.actualInvoice, "ActualInvoiceAmount", onSort, getSortIcon)
         SortableHeaderCell("Status", ColW.status, "StatusMessage", onSort, getSortIcon)
         HeaderCell("Files", ColW.files, sortable = false)
         HeaderCell("Actions", ColW.actions, sortable = false)
@@ -668,6 +680,17 @@ private fun DataGridShiftRow(
                 ColW.contractorQuote
             )
 
+            // Actual Invoice — Admin/Manager can edit, others see read-only
+            val actualInvoiceText = if (row.shift.actualInvoiceAmount != null)
+                "$${String.format("%.2f", row.shift.actualInvoiceAmount)}" else ""
+            if (isOwner) {
+                DataCellClickable(actualInvoiceText, ColW.actualInvoice) {
+                    viewModel.editActualInvoice(row.shift.id)
+                }
+            } else {
+                DataCell(actualInvoiceText, ColW.actualInvoice)
+            }
+
             ColoredCell(row.statusMessage, Color(row.statusColor), ColW.status)
 
             // Files
@@ -725,6 +748,7 @@ private fun SubItemsSection(
             SubHeaderCell("🔧 Sub Item", ColW.subItem)
             SubHeaderCell("🛡️ H&S Status", ColW.subHs)
             SubHeaderCell("📊 Status", ColW.subStatus)
+            SubHeaderCell("🎯 Category", ColW.subCategory)
             SubHeaderCell("🚀 Date Started", ColW.subDateStarted)
             SubHeaderCell("✅ Completed", ColW.subDateCompleted)
             SubHeaderCell("📁 Files", ColW.subFiles)
@@ -812,6 +836,21 @@ private fun SubItemRow(
             contentAlignment = Alignment.Center
         ) {
             Text(statusText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+
+        // Job Category (Primary/Secondary)
+        val categoryColor = viewModel.jobCategoryColorDynamic(subItem.jobCategory)
+        val categoryText = viewModel.jobCategoryTextDynamic(subItem.jobCategory)
+        Box(
+            modifier = Modifier
+                .width(ColW.subCategory).height(65.dp)
+                .border(0.5.dp, Color.LightGray)
+                .background(Color(categoryColor))
+                .clickable { viewModel.openSubItemJobCategory(shiftId, subItem.id) }
+                .padding(10.dp, 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(categoryText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         Box(
@@ -906,7 +945,7 @@ private fun AddSubItemRow(shiftId: Int, newName: String, viewModel: DayDetailVie
             }
         }
 
-        listOf(ColW.subHs, ColW.subStatus, ColW.subDateStarted, ColW.subDateCompleted, ColW.subFiles, ColW.subDelete).forEach { w ->
+        listOf(ColW.subHs, ColW.subStatus, ColW.subCategory, ColW.subDateStarted, ColW.subDateCompleted, ColW.subFiles, ColW.subDelete).forEach { w ->
             Box(
                 modifier = Modifier
                     .width(w).height(50.dp)

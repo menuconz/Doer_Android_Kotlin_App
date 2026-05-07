@@ -100,6 +100,8 @@ private val DRAWER_ROUTES = setOf(
     Routes.FILO_KRETO_TEAM,
     Routes.LIVE_TRACKING,
     Routes.TIME_TRACKING,
+    Routes.BOARD_SETTINGS,
+    Routes.ACTIVITY_LOG,
 )
 
 private fun topBarTitleFor(route: String): String = when (route) {
@@ -114,6 +116,8 @@ private fun topBarTitleFor(route: String): String = when (route) {
     Routes.FILO_KRETO_TEAM -> "FiloKreto Team"
     Routes.LIVE_TRACKING -> "Live Tracking"
     Routes.TIME_TRACKING -> "Time Tracking"
+    Routes.BOARD_SETTINGS -> "Board Settings"
+    Routes.ACTIVITY_LOG -> "Activity Log"
     else -> ""
 }
 
@@ -525,6 +529,18 @@ fun DoerNavHost(
                                 navController.popBackStack()
                             }
                         )
+                    }
+
+                    // ===================== BOARD SETTINGS =====================
+
+                    composable(Routes.BOARD_SETTINGS) {
+                        nz.co.doer.ui.boardsettings.BoardSettingsScreen()
+                    }
+
+                    // ===================== ACTIVITY LOG =====================
+
+                    composable(Routes.ACTIVITY_LOG) {
+                        nz.co.doer.ui.activitylog.ActivityLogScreen()
                     }
 
                     // ===================== NOTIFICATIONS =====================

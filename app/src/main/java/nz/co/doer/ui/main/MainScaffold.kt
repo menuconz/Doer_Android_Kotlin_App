@@ -22,7 +22,9 @@ import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ShareLocation
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import nz.co.doer.R
 import nz.co.doer.data.local.PreferencesManager
 
@@ -57,16 +60,19 @@ fun DrawerContent(
     preferencesManager: PreferencesManager,
     currentRoute: String,
     onNavigate: (String) -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    boardConfigViewModel: BoardConfigViewModel = hiltViewModel()
 ) {
     val isAdmin by preferencesManager.isAdmin.collectAsState(initial = false)
     val isManager by preferencesManager.isManager.collectAsState(initial = false)
     val fullName by preferencesManager.fullName.collectAsState(initial = "")
     val email by preferencesManager.email.collectAsState(initial = "")
+    val activeBoard by boardConfigViewModel.activeBoard.collectAsState()
+    val boardName = activeBoard?.name ?: "NZ Mahi 2026"
 
     val menuItems = buildList {
         add(DrawerMenuItem("Home", Icons.Default.CalendarMonth, "calendar"))
-        add(DrawerMenuItem("NZ Mahi", Icons.Default.Work, "main_leads_jobs"))
+        add(DrawerMenuItem(boardName, Icons.Default.Work, "main_leads_jobs"))
         if (isAdmin) {
             add(DrawerMenuItem("New Leads", Icons.Default.Leaderboard, "new_leads", requiresAdmin = true))
             add(DrawerMenuItem("Quoted Leads", Icons.Default.Leaderboard, "quoted_leads", requiresAdmin = true))
@@ -78,6 +84,10 @@ fun DrawerContent(
             add(DrawerMenuItem("Live Tracking", Icons.Default.ShareLocation, "live_tracking", requiresManager = true))
             add(DrawerMenuItem("Time Tracking", Icons.Default.Schedule, "time_tracking", requiresManager = true))
             add(DrawerMenuItem("Contractors", Icons.Default.Group, "all_contractors", requiresManager = true))
+        }
+        if (isAdmin || isManager) {
+            add(DrawerMenuItem("Board Settings", Icons.Default.Tune, "board_settings", requiresManager = true))
+            add(DrawerMenuItem("Activity Log", Icons.Default.History, "activity_log", requiresManager = true))
         }
         add(DrawerMenuItem("Profile", Icons.Default.Person, "profile"))
     }

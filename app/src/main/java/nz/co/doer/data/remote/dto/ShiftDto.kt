@@ -37,6 +37,7 @@ data class ShiftDto(
     @SerialName("statusMessage") val statusMessage: String = "",
     @SerialName("statusColor") val statusColor: String = "",
     @SerialName("amount") val amount: Double? = null,
+    @SerialName("actualInvoiceAmount") val actualInvoiceAmount: Double? = null,
     @SerialName("caregiverLevelId") val caregiverLevelId: Int? = null,
     @SerialName("caregiverLevelName") val caregiverLevelName: String? = null,
     @SerialName("paymarkPaymentURL") val paymarkPaymentUrl: String = "",

@@ -52,11 +52,49 @@ class NewLeadsViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
     private val accountRepository: AccountRepository,
     private val preferencesManager: PreferencesManager,
-    private val googlePlacesService: GooglePlacesService
+    private val googlePlacesService: GooglePlacesService,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(NewLeadsUiState())
     val uiState: StateFlow<NewLeadsUiState> = _uiState.asStateFlow()
+
+    // ──────────────── Cache-aware label/color helpers (instance) ────────────────
+    fun leadStatusColor(statusId: Int): Long =
+        boardConfigCache.color("LeadStatus", statusId) { getLeadStatusColor(statusId) }
+
+    fun leadStatusInfo(statusId: Int): Pair<String, String> {
+        val cached = boardConfigCache.getOptions("LeadStatus").firstOrNull { it.value == statusId }
+        return if (cached != null) {
+            cached.displayName to (cached.color ?: getLeadStatusInfo(statusId).second)
+        } else {
+            getLeadStatusInfo(statusId)
+        }
+    }
+
+    fun contractTypeColorDynamic(contractType: Int?): Long =
+        boardConfigCache.color("ContractType", contractType ?: -1) { getContractTypeColor(contractType) }
+
+    fun contractTypeInfoDynamic(contractType: Int?): Pair<String, String> {
+        val cached = boardConfigCache.getOptions("ContractType").firstOrNull { it.value == contractType }
+        return if (cached != null) {
+            cached.displayName to (cached.color ?: getContractTypeInfo(contractType).second)
+        } else {
+            getContractTypeInfo(contractType)
+        }
+    }
+
+    fun dynamicLeadStatuses(): List<Pair<Int, String>> {
+        val cached = boardConfigCache.getOptions("LeadStatus")
+        return if (cached.isEmpty()) leadStatuses
+        else cached.map { it.value to it.displayName }
+    }
+
+    fun dynamicContractTypes(): List<Pair<Int, String>> {
+        val cached = boardConfigCache.getOptions("ContractType")
+        return if (cached.isEmpty()) contractTypes
+        else cached.map { it.value to it.displayName }
+    }
 
     private val parseFormatters = listOf(
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),

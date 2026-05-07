@@ -124,13 +124,17 @@ fun NewLeadsScreen(
             EditField.Status -> {
                 StatusBottomSheet(
                     onSelect = viewModel::selectLeadStatus,
-                    onDismiss = viewModel::cancelEdit
+                    onDismiss = viewModel::cancelEdit,
+                    options = viewModel.dynamicLeadStatuses(),
+                    colorProvider = viewModel::leadStatusColor
                 )
             }
             EditField.ContractType -> {
                 ContractTypeBottomSheet(
                     onSelect = viewModel::selectContractType,
-                    onDismiss = viewModel::cancelEdit
+                    onDismiss = viewModel::cancelEdit,
+                    options = viewModel.dynamicContractTypes(),
+                    colorProvider = { viewModel.contractTypeColorDynamic(it) }
                 )
             }
             EditField.Client -> {
@@ -251,7 +255,7 @@ fun NewLeadsScreen(
                                             SolidColorCell(
                                                 text = lead.statusName,
                                                 width = ColStatus,
-                                                bgColor = Color(NewLeadsViewModel.getLeadStatusColor(lead.statusId))
+                                                bgColor = Color(viewModel.leadStatusColor(lead.statusId))
                                             ) {
                                                 viewModel.startEdit(lead, EditField.Status)
                                             }
@@ -274,7 +278,7 @@ fun NewLeadsScreen(
                                             SolidColorCell(
                                                 text = lead.contractTypeName,
                                                 width = ColContractType,
-                                                bgColor = Color(NewLeadsViewModel.getContractTypeColor(lead.contractType))
+                                                bgColor = Color(viewModel.contractTypeColorDynamic(lead.contractType))
                                             ) {
                                                 viewModel.startEdit(lead, EditField.ContractType)
                                             }
@@ -555,7 +559,9 @@ internal fun EditorBottomSheet(
 @Composable
 internal fun StatusBottomSheet(
     onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    options: List<Pair<Int, String>> = NewLeadsViewModel.leadStatuses,
+    colorProvider: (Int) -> Long = { NewLeadsViewModel.getLeadStatusColor(it) }
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -569,8 +575,8 @@ internal fun StatusBottomSheet(
                 Text("Status", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(10.dp))
-            NewLeadsViewModel.leadStatuses.forEach { (id, name) ->
-                val color = Color(NewLeadsViewModel.getLeadStatusColor(id))
+            options.forEach { (id, name) ->
+                val color = Color(colorProvider(id))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -598,7 +604,9 @@ internal fun StatusBottomSheet(
 @Composable
 internal fun ContractTypeBottomSheet(
     onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    options: List<Pair<Int, String>> = NewLeadsViewModel.contractTypes,
+    colorProvider: (Int) -> Long = { NewLeadsViewModel.getContractTypeColor(it) }
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -616,8 +624,8 @@ internal fun ContractTypeBottomSheet(
                 Text("Contract Type", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(10.dp))
-            NewLeadsViewModel.contractTypes.forEach { (id, name) ->
-                val color = Color(NewLeadsViewModel.getContractTypeColor(id))
+            options.forEach { (id, name) ->
+                val color = Color(colorProvider(id))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

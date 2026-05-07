@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -178,8 +179,62 @@ fun ContractorDetailsScreen(
                     isImageFile = viewModel::isImageFile
                 )
 
+                Spacer(Modifier.height(20.dp))
+
+                // Admin-only: Mark as Employee toggle
+                val isAdminUser by viewModel.isAdmin().collectAsState(initial = false)
+                if (isAdminUser) {
+                    EmployeeToggleCard(
+                        isEmployee = contractor.isEmployee,
+                        onToggle = viewModel::toggleEmployeeFlag
+                    )
+                }
+
                 Spacer(Modifier.height(30.dp))
             }
+        }
+    }
+}
+
+// Admin-only card with a switch to mark this contractor as an Employee.
+// Employees gain extra permissions (add subitems, mark subitems Done).
+@Composable
+private fun EmployeeToggleCard(isEmployee: Boolean, onToggle: (Boolean) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("👥", fontSize = 18.sp, color = BlueLabel)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Mark as Employee",
+                        fontSize = 18.sp,
+                        color = BlueLabel,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (isEmployee)
+                        "This contractor is currently an Employee."
+                    else
+                        "Toggle on to grant this contractor Employee permissions.",
+                    fontSize = 13.sp,
+                    color = Gray500
+                )
+            }
+            Switch(
+                checked = isEmployee,
+                onCheckedChange = onToggle
+            )
         }
     }
 }

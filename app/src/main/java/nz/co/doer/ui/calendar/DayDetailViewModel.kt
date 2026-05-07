@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import nz.co.doer.data.local.PreferencesManager
@@ -101,6 +102,7 @@ enum class DayDetailDialog {
     HS_FORM_STATUS,
     SUB_ITEM_HS,
     SUB_ITEM_STATUS,
+    SUB_ITEM_CATEGORY,
     SUB_ITEM_DATE,
     DELETE_SUB_ITEM
 }
@@ -116,6 +118,7 @@ data class DayDetailUiState(
     val isAdmin: Boolean = false,
     val isCaregiver: Boolean = false,
     val isOwner: Boolean = false,
+    val isEmployee: Boolean = false,
     val errorMessage: String? = null,
 
     // Sort
@@ -157,8 +160,126 @@ class DayDetailViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
     private val preferencesManager: PreferencesManager,
     private val googlePlacesService: GooglePlacesService,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    // Cache-aware label/color helpers. Read from BoardConfigCache when available,
+    // fall back to the static companion methods.
+    fun statusMessageDynamic(statusId: Int, hasQuotations: Boolean = false): String =
+        boardConfigCache.displayName("ShiftStatus", statusId) { getStatusMessage(statusId, hasQuotations) }
+
+    fun statusColorDynamic(statusId: Int, hasQuotations: Boolean = false): Long =
+        boardConfigCache.color("ShiftStatus", statusId) { CalendarViewModel.getStatusColor(statusId, hasQuotations) }
+
+    fun contractTypeTextDynamic(value: Int?): String =
+        boardConfigCache.displayName("ContractType", value ?: -1) { getContractTypeText(value) }
+
+    fun contractTypeColorDynamic(value: Int?): Long =
+        boardConfigCache.color("ContractType", value ?: -1) { CalendarViewModel.getContractTypeColor(value) }
+
+    fun invoiceStatusTextDynamic(value: Int?): String =
+        boardConfigCache.displayName("InvoiceStatus", value ?: -1) { getInvoiceStatusText(value) }
+
+    fun invoiceStatusColorDynamic(value: Int?): Long =
+        boardConfigCache.color("InvoiceStatus", value ?: -1) { getInvoiceStatusColor(value) }
+
+    fun hsFormTextDynamic(value: Int?): String =
+        boardConfigCache.displayName("HSRequired", value ?: -1) { getHSFormText(value) }
+
+    fun hsFormColorDynamic(value: Int?): Long =
+        boardConfigCache.color("HSRequired", value ?: -1) { getHSFormColor(value) }
+
+    fun subItemHsTextDynamic(value: Int): String =
+        boardConfigCache.displayName("HSRequired", value) { getSubItemHSText(value) }
+
+    fun subItemHsColorDynamic(value: Int): Long =
+        boardConfigCache.color("HSRequired", value) { getSubItemHSColor(value) }
+
+    fun subItemStatusTextDynamic(value: Int): String =
+        boardConfigCache.displayName("SubItemStatus", value) { getSubItemStatusText(value) }
+
+    fun subItemStatusColorDynamic(value: Int): Long =
+        boardConfigCache.color("SubItemStatus", value) { getSubItemStatusColor(value) }
+
+    fun jobCategoryTextDynamic(value: Int): String =
+        boardConfigCache.displayName("JobCategory", value) {
+            if (value == 2) "Secondary" else "Primary"
+        }
+
+    fun jobCategoryColorDynamic(value: Int): Long =
+        boardConfigCache.color("JobCategory", value) {
+            if (value == 2) 0xFF9E9E9EL else 0xFF1976D2L
+        }
+
+    fun dynamicJobCategoryItems(): List<SubItemStatusItem> {
+        val cached = boardConfigCache.getOptions("JobCategory")
+        if (cached.isEmpty()) return listOf(
+            SubItemStatusItem(1, "Primary", 0xFF1976D2L),
+            SubItemStatusItem(2, "Secondary", 0xFF9E9E9EL)
+        )
+        return cached.map {
+            SubItemStatusItem(
+                id = it.value,
+                name = it.displayName,
+                color = boardConfigCache.parseHexColor(it.color, if (it.value == 2) 0xFF9E9E9EL else 0xFF1976D2L)
+            )
+        }
+    }
+
+    // Dynamic option-list builders for picker dialogs.
+    // Read from BoardConfigCache; fall back to the static companion lists when cache is empty.
+    fun dynamicContractTypeItems(): List<ContractTypeItem> {
+        val cached = boardConfigCache.getOptions("ContractType")
+        if (cached.isEmpty()) return contractTypeOptions
+        val fallbackByValue = contractTypeOptions.associateBy { it.id }
+        return cached.map { opt ->
+            ContractTypeItem(
+                id = opt.value,
+                name = opt.displayName,
+                color = boardConfigCache.parseHexColor(opt.color, fallbackByValue[opt.value]?.color ?: 0xFFC4C4C4L)
+            )
+        }
+    }
+
+    fun dynamicInvoiceStatusItems(): List<InvoiceStatusItem> {
+        val cached = boardConfigCache.getOptions("InvoiceStatus")
+        if (cached.isEmpty()) return invoiceStatusOptions
+        val fallbackByValue = invoiceStatusOptions.associateBy { it.id }
+        return cached.map { opt ->
+            InvoiceStatusItem(
+                id = opt.value,
+                name = opt.displayName,
+                color = boardConfigCache.parseHexColor(opt.color, fallbackByValue[opt.value]?.color ?: 0xFFC4C4C4L)
+            )
+        }
+    }
+
+    fun dynamicHsFormStatusItems(): List<HSFormStatusItem> {
+        val cached = boardConfigCache.getOptions("HSRequired")
+        if (cached.isEmpty()) return hsFormStatusOptions
+        val fallbackByValue = hsFormStatusOptions.associateBy { it.id }
+        return cached.map { opt ->
+            HSFormStatusItem(
+                id = opt.value,
+                name = opt.displayName,
+                color = boardConfigCache.parseHexColor(opt.color, fallbackByValue[opt.value]?.color ?: 0xFFC4C4C4L)
+            )
+        }
+    }
+
+    fun dynamicSubItemStatusItems(): List<SubItemStatusItem> {
+        val cached = boardConfigCache.getOptions("SubItemStatus")
+        if (cached.isEmpty()) return subItemStatusOpts
+        val fallbackByValue = subItemStatusOpts.associateBy { it.id }
+        return cached.map { opt ->
+            SubItemStatusItem(
+                id = opt.value,
+                name = opt.displayName,
+                color = boardConfigCache.parseHexColor(opt.color, fallbackByValue[opt.value]?.color ?: 0xFFC4C4C4L)
+            )
+        }
+    }
 
     private val _uiState = MutableStateFlow(DayDetailUiState())
     val uiState: StateFlow<DayDetailUiState> = _uiState.asStateFlow()
@@ -251,11 +372,11 @@ class DayDetailViewModel @Inject constructor(
             selectedDate = date,
             selectedDateString = dateFormatted,
             pageTitle = pageTitleFormatted,
-            contractTypes = contractTypeOptions,
-            invoiceStatuses = invoiceStatusOptions,
-            hsFormStatuses = hsFormStatusOptions,
-            subItemHsOptions = hsRequiredOptions,
-            subItemStatusOptions = subItemStatusOpts,
+            contractTypes = dynamicContractTypeItems(),
+            invoiceStatuses = dynamicInvoiceStatusItems(),
+            hsFormStatuses = dynamicHsFormStatusItems(),
+            subItemHsOptions = dynamicHsFormStatusItems(),
+            subItemStatusOptions = dynamicSubItemStatusItems(),
             filterColumns = buildFilterColumns()
         )
 
@@ -263,14 +384,35 @@ class DayDetailViewModel @Inject constructor(
             val isAdmin = preferencesManager.isAdmin.first()
             val isManager = preferencesManager.isManager.first()
             val isCaregiver = preferencesManager.isCaregiver.first()
+            val isEmployee = preferencesManager.isEmployee.first()
             _uiState.value = _uiState.value.copy(
                 isAdmin = isAdmin,
                 isManager = isManager,
                 isCaregiver = isCaregiver,
+                isEmployee = isEmployee,
                 isOwner = isManager || isAdmin
             )
             loadClients()
             loadShifts()
+        }
+
+        // When admin renames a dropdown label/colour anywhere, BoardConfigCache emits
+        // a new value. Refresh both the row mapping AND the picker option lists.
+        viewModelScope.launch {
+            // Drop the very first emission (initial empty state when this VM was created)
+            // so we don't trigger a redundant reload immediately.
+            boardConfigCache.options.drop(1).collect {
+                _uiState.value = _uiState.value.copy(
+                    contractTypes = dynamicContractTypeItems(),
+                    invoiceStatuses = dynamicInvoiceStatusItems(),
+                    hsFormStatuses = dynamicHsFormStatusItems(),
+                    subItemHsOptions = dynamicHsFormStatusItems(),
+                    subItemStatusOptions = dynamicSubItemStatusItems()
+                )
+                if (_uiState.value.shiftRows.isNotEmpty()) {
+                    loadShifts()
+                }
+            }
         }
     }
 
@@ -355,19 +497,20 @@ class DayDetailViewModel @Inject constructor(
             ShiftDisplayRow(
                 shift = enrichedShift,
                 subItems = subItems,
-                statusMessage = getStatusMessage(shift.statusId, hasQuotations),
-                statusColor = CalendarViewModel.getStatusColor(shift.statusId, hasQuotations),
-                contractTypeText = getContractTypeText(shift.contractType),
-                contractTypeColor = CalendarViewModel.getContractTypeColor(shift.contractType),
-                invoiceStatusText = getInvoiceStatusText(shift.invoiceStatus),
-                invoiceStatusColor = getInvoiceStatusColor(shift.invoiceStatus),
-                hsFormText = getHSFormText(shift.hsForms),
-                hsFormColor = getHSFormColor(shift.hsForms),
+                statusMessage = statusMessageDynamic(shift.statusId, hasQuotations),
+                statusColor = statusColorDynamic(shift.statusId, hasQuotations),
+                contractTypeText = contractTypeTextDynamic(shift.contractType),
+                contractTypeColor = contractTypeColorDynamic(shift.contractType),
+                invoiceStatusText = invoiceStatusTextDynamic(shift.invoiceStatus),
+                invoiceStatusColor = invoiceStatusColorDynamic(shift.invoiceStatus),
+                hsFormText = hsFormTextDynamic(shift.hsForms),
+                hsFormColor = hsFormColorDynamic(shift.hsForms),
                 durationFromFormatted = formatDateTime(shift.durationFrom),
                 durationToFormatted = formatDateTime(shift.durationTo),
                 hasSubItems = subItems.isNotEmpty(),
                 hasQuotations = hasQuotations,
-                isAddSubItem = isOwner,
+                // Employees can also add subitems (but not delete them).
+                isAddSubItem = isOwner || _uiState.value.isEmployee,
                 isDeleteSubItem = isOwner
             )
         }
@@ -425,6 +568,7 @@ class DayDetailViewModel @Inject constructor(
             "Instructions" -> row.shift.instructions
             "Amount" -> (row.shift.amount ?: 0.0).toString().padStart(15, '0')
             "AcceptedQuoteAmount" -> (row.shift.acceptedQuoteAmount ?: 0.0).toString().padStart(15, '0')
+            "ActualInvoiceAmount" -> (row.shift.actualInvoiceAmount ?: 0.0).toString().padStart(15, '0')
             "StatusMessage" -> row.statusMessage
             else -> ""
         }
@@ -540,8 +684,8 @@ class DayDetailViewModel @Inject constructor(
     private fun getSubItemPropertyValue(subItem: ShiftSubItemDto, propertyName: String): String {
         return when (propertyName) {
             "SubItem" -> subItem.subitem
-            "SubItemHSRequired" -> getSubItemHSText(subItem.hsRequired)
-            "SubItemStatus" -> getSubItemStatusText(subItem.status)
+            "SubItemHSRequired" -> subItemHsTextDynamic(subItem.hsRequired)
+            "SubItemStatus" -> subItemStatusTextDynamic(subItem.status)
             "SubItemDateStarted" -> subItem.dateStartedString
             "SubItemCompleted" -> subItem.dateCompletedString
             else -> ""
@@ -555,12 +699,12 @@ class DayDetailViewModel @Inject constructor(
             "Address" -> shift.address
             "DurationFrom" -> formatDateTime(shift.durationFrom)
             "DurationTo" -> formatDateTime(shift.durationTo)
-            "ContractType" -> getContractTypeText(shift.contractType)
-            "InvoiceStatus" -> getInvoiceStatusText(shift.invoiceStatus)
-            "HSForm" -> getHSFormText(shift.hsForms)
+            "ContractType" -> contractTypeTextDynamic(shift.contractType)
+            "InvoiceStatus" -> invoiceStatusTextDynamic(shift.invoiceStatus)
+            "HSForm" -> hsFormTextDynamic(shift.hsForms)
             "FinalMeasure" -> shift.finalMeasure
             "Instructions" -> shift.instructions
-            "StatusMessage" -> getStatusMessage(shift.statusId, shift.hasQuotations)
+            "StatusMessage" -> statusMessageDynamic(shift.statusId, shift.hasQuotations)
             else -> ""
         }
     }
@@ -591,6 +735,17 @@ class DayDetailViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             activeDialog = DayDetailDialog.EDITOR, editingShiftId = shiftId,
             editorTitle = "Edit Job Description", editorText = shift.instructions, editorFieldName = "Instructions"
+        )
+    }
+
+    // Open the editor for Actual Invoice Amount. Admin/Manager (isOwner) only.
+    fun editActualInvoice(shiftId: Int) {
+        if (!_uiState.value.isOwner) return
+        val shift = findShift(shiftId) ?: return
+        val current = shift.actualInvoiceAmount?.let { String.format("%.2f", it) } ?: ""
+        _uiState.value = _uiState.value.copy(
+            activeDialog = DayDetailDialog.EDITOR, editingShiftId = shiftId,
+            editorTitle = "Actual Invoice Amount", editorText = current, editorFieldName = "ActualInvoiceAmount"
         )
     }
 
@@ -644,21 +799,36 @@ class DayDetailViewModel @Inject constructor(
     }
 
     fun openSubItemHS(shiftId: Int, subItemId: Int) {
-        if (_uiState.value.isCaregiver) return
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
         _uiState.value = _uiState.value.copy(
             activeDialog = DayDetailDialog.SUB_ITEM_HS, editingShiftId = shiftId, editingSubItemId = subItemId
         )
     }
 
     fun openSubItemStatus(shiftId: Int, subItemId: Int) {
-        if (_uiState.value.isCaregiver) return
+        // Employees can change subitem status (including marking Done) even though they're caregivers.
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
         _uiState.value = _uiState.value.copy(
             activeDialog = DayDetailDialog.SUB_ITEM_STATUS, editingShiftId = shiftId, editingSubItemId = subItemId
         )
     }
 
+    fun openSubItemJobCategory(shiftId: Int, subItemId: Int) {
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
+        _uiState.value = _uiState.value.copy(
+            activeDialog = DayDetailDialog.SUB_ITEM_CATEGORY, editingShiftId = shiftId, editingSubItemId = subItemId
+        )
+    }
+
+    fun selectSubItemJobCategory(value: Int) {
+        val state = _uiState.value
+        val subItem = findSubItem(state.editingShiftId, state.editingSubItemId) ?: return
+        dismissDialog()
+        updateSubItem(state.editingShiftId, subItem.copy(jobCategory = value))
+    }
+
     fun openSubItemDateStarted(shiftId: Int, subItemId: Int) {
-        if (_uiState.value.isCaregiver) return
+        if (_uiState.value.isCaregiver && !_uiState.value.isEmployee) return
         val subItem = findSubItem(shiftId, subItemId) ?: return
         val (date, time) = if (!subItem.dateStarted.isNullOrBlank()) parseDateTimeParts(subItem.dateStarted)
         else Pair(LocalDate.now(), LocalTime.NOON)
@@ -689,6 +859,11 @@ class DayDetailViewModel @Inject constructor(
             "ProjectName" -> shift.copy(projectName = text)
             "FinalMeasure" -> shift.copy(finalMeasure = text)
             "Instructions" -> shift.copy(instructions = text)
+            "ActualInvoiceAmount" -> {
+                if (!state.isOwner) return  // server-side guard exists too
+                val parsed = text.trim().removePrefix("$").replace(",", "").toDoubleOrNull()
+                shift.copy(actualInvoiceAmount = parsed)
+            }
             else -> shift
         }
         dismissDialog(); updateShift(updated)
@@ -870,14 +1045,14 @@ class DayDetailViewModel @Inject constructor(
             if (row.shift.id != enrichedShift.id) return row
             return row.copy(
                 shift = enrichedShift,
-                statusMessage = getStatusMessage(enrichedShift.statusId, row.hasQuotations),
-                statusColor = CalendarViewModel.getStatusColor(enrichedShift.statusId, row.hasQuotations),
-                contractTypeText = getContractTypeText(enrichedShift.contractType),
-                contractTypeColor = CalendarViewModel.getContractTypeColor(enrichedShift.contractType),
-                invoiceStatusText = getInvoiceStatusText(enrichedShift.invoiceStatus),
-                invoiceStatusColor = getInvoiceStatusColor(enrichedShift.invoiceStatus),
-                hsFormText = getHSFormText(enrichedShift.hsForms),
-                hsFormColor = getHSFormColor(enrichedShift.hsForms),
+                statusMessage = statusMessageDynamic(enrichedShift.statusId, row.hasQuotations),
+                statusColor = statusColorDynamic(enrichedShift.statusId, row.hasQuotations),
+                contractTypeText = contractTypeTextDynamic(enrichedShift.contractType),
+                contractTypeColor = contractTypeColorDynamic(enrichedShift.contractType),
+                invoiceStatusText = invoiceStatusTextDynamic(enrichedShift.invoiceStatus),
+                invoiceStatusColor = invoiceStatusColorDynamic(enrichedShift.invoiceStatus),
+                hsFormText = hsFormTextDynamic(enrichedShift.hsForms),
+                hsFormColor = hsFormColorDynamic(enrichedShift.hsForms),
                 durationFromFormatted = formatDateTime(enrichedShift.durationFrom),
                 durationToFormatted = formatDateTime(enrichedShift.durationTo)
             )

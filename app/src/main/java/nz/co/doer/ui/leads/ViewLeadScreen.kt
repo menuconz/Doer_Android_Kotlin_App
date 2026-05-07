@@ -214,7 +214,7 @@ fun ViewLeadScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 StatusFrame(
                     statusName = lead.statusName,
-                    statusColor = Color(NewLeadsViewModel.getLeadStatusColor(lead.statusId))
+                    statusColor = Color(viewModel.leadStatusColor(lead.statusId))
                 )
 
                 // NOTE: Action buttons (Send Quote, Close Deal, Move to Contacts, Update Lead)

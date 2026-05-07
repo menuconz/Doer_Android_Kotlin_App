@@ -172,6 +172,10 @@ class AccountRepository @Inject constructor(
         accountApi.deleteUserAccount(userId)
     }
 
+    suspend fun markAsEmployee(userId: String, isEmployee: Boolean, adminId: String): ApiResult<UserDto> = safeApiCall {
+        accountApi.markAsEmployee(userId, isEmployee, adminId)
+    }
+
     suspend fun getAllContractors(): ApiResult<List<UserDto>> = safeApiCall {
         accountApi.getAllContractors()
     }

@@ -42,11 +42,15 @@ sealed class ViewLeadEvent {
 class ViewLeadViewModel @Inject constructor(
     private val leadRepository: LeadRepository,
     private val preferencesManager: PreferencesManager,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ViewLeadUiState())
     val uiState: StateFlow<ViewLeadUiState> = _uiState.asStateFlow()
+
+    fun leadStatusColor(statusId: Int): Long =
+        boardConfigCache.color("LeadStatus", statusId) { NewLeadsViewModel.getLeadStatusColor(statusId) }
 
     private val _events = MutableSharedFlow<ViewLeadEvent>()
     val events: SharedFlow<ViewLeadEvent> = _events.asSharedFlow()

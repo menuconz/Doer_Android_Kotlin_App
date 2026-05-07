@@ -70,6 +70,10 @@ class ShiftRepository @Inject constructor(
         shiftApi.getMonthlyJobsByAdmin(month, year, skip, take)
     }
 
+    suspend fun getJobsByDateRange(userId: String, startDate: String, endDate: String): ApiResult<List<ShiftDto>> = safeApiCall {
+        shiftApi.getJobsByDateRange(userId, startDate, endDate)
+    }
+
     suspend fun getShiftById(id: Int): ApiResult<ShiftDto> = safeApiCall { shiftApi.getShiftById(id) }
 
     suspend fun createShift(shiftDetail: ShiftDto): ApiResult<ShiftDto> = safeApiCall { shiftApi.createShift(shiftDetail) }

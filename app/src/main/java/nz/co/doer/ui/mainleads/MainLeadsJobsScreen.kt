@@ -112,6 +112,7 @@ private val ColFinalMeasure = 180.dp
 private val ColInstructions = 200.dp
 private val ColQuote = 180.dp
 private val ColContractorQuote = 180.dp
+private val ColActualInvoice = 180.dp
 private val ColStatus = 180.dp
 private val ColFiles = 100.dp
 private val ColActions = 225.dp
@@ -120,6 +121,7 @@ private val ColActions = 225.dp
 private val SubColName = 200.dp
 private val SubColHS = 140.dp
 private val SubColStatus = 120.dp
+private val SubColCategory = 130.dp
 private val SubColStarted = 140.dp
 private val SubColCompleted = 140.dp
 private val SubColFiles = 80.dp
@@ -556,6 +558,7 @@ private fun TableHeader(state: MainLeadsJobsUiState, viewModel: MainLeadsJobsVie
             SortableHeader("Quote (Sent to Client)", ColQuote, "Amount", state, viewModel::sortBy)
         }
         SortableHeader("Contractor Quote", ColContractorQuote, "AcceptedQuoteAmount", state, viewModel::sortBy)
+        SortableHeader("Actual Invoice", ColActualInvoice, "ActualInvoiceAmount", state, viewModel::sortBy)
         SortableHeader("Status", ColStatus, "StatusMessage", state, viewModel::sortBy)
         HeaderCell("Files", ColFiles, sortable = false)
         HeaderCell("Actions", ColActions, sortable = false)
@@ -651,12 +654,7 @@ private fun TableDataRow(
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(start = 5.dp)
                     )
-                    Text(
-                        "💬", fontSize = 16.sp,
-                        modifier = Modifier
-                            .clickable { onViewMessages(row.shift.id) }
-                            .padding(horizontal = 4.dp)
-                    )
+                    // Message bubble removed from main project row — bubbles only on subitems.
                 }
             }
 
@@ -706,6 +704,15 @@ private fun TableDataRow(
 
             // Contractor Quote
             CellLabel(viewModel.formatAmount(row.shift.acceptedQuoteAmount), ColContractorQuote)
+
+            // Actual Invoice — editable by Admin/Manager only, otherwise read-only
+            if (state.isOwner) {
+                CellLabel(viewModel.formatAmount(row.shift.actualInvoiceAmount), ColActualInvoice) {
+                    viewModel.editActualInvoice(row.shift.id)
+                }
+            } else {
+                CellLabel(viewModel.formatAmount(row.shift.actualInvoiceAmount), ColActualInvoice)
+            }
 
             // Status (colored background)
             ColoredBgCell(row.statusDisplayText, Color(row.statusColor), ColStatus)
@@ -817,6 +824,7 @@ private fun SubItemsSection(
             SubItemHeaderCell("🔧 Sub Item", SubColName, isFirst = true)
             SubItemHeaderCell("🛡️ H&S Status", SubColHS)
             SubItemHeaderCell("📊 Status", SubColStatus)
+            SubItemHeaderCell("🎯 Category", SubColCategory)
             SubItemHeaderCell("🚀 Date Started", SubColStarted)
             SubItemHeaderCell("✅ Completed", SubColCompleted)
             SubItemHeaderCell("📁 Files", SubColFiles)
@@ -927,6 +935,22 @@ private fun SubItemDataRow(
             Text(statusText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
+        // Job Category (Primary/Secondary)
+        val categoryText = viewModel.jobCategoryText(subItem.jobCategory)
+        val categoryColor = Color(viewModel.jobCategoryColor(subItem.jobCategory))
+        Box(
+            modifier = Modifier
+                .width(SubColCategory)
+                .height(65.dp)
+                .background(categoryColor)
+                .border(0.5.dp, Color(0xFFE5E7EB))
+                .clickable { viewModel.editSubItemJobCategory(subItem.id) }
+                .padding(10.dp, 8.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(categoryText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+
         // Date Started
         SubItemTextCell(
             subItem.dateStartedString.ifBlank { formatSubItemDate(subItem.dateStarted) ?: "Not Started" },
@@ -1031,7 +1055,7 @@ private fun AddSubItemRow(row: JobRowItem, viewModel: MainLeadsJobsViewModel) {
         }
 
         // Empty placeholder cells
-        listOf(SubColHS, SubColStatus, SubColStarted, SubColCompleted, SubColFiles).forEach { w ->
+        listOf(SubColHS, SubColStatus, SubColCategory, SubColStarted, SubColCompleted, SubColFiles).forEach { w ->
             Box(
                 modifier = Modifier
                     .width(w)
@@ -1071,24 +1095,57 @@ private fun KanbanView(
     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
         val column = state.kanbanColumns[page]
         Column(modifier = Modifier.fillMaxSize().padding(10.dp)) {
-            // Column Header
+            // Column Header with count badge
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = Color(column.headerColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    column.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White,
-                    modifier = Modifier.padding(10.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        column.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White.copy(alpha = 0.25f)
+                    ) {
+                        Text(
+                            "${column.totalCount}",
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // Cards
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(column.items) { job ->
-                    KanbanCard(job, onShiftDetails, onViewMessages)
+            if (column.totalCount == 0) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No jobs", color = Color.Gray, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    column.sections.forEach { section ->
+                        if (!section.title.isNullOrBlank()) {
+                            item(key = "header-${section.title}") {
+                                Text(
+                                    text = "━━━ ${section.title.uppercase()} (${section.cards.size}) ━━━",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF6B7280),
+                                    modifier = Modifier.padding(vertical = 6.dp)
+                                )
+                            }
+                        }
+                        items(section.cards, key = { "card-${it.subItem.id}" }) { card ->
+                            KanbanSubItemCard(card, onShiftDetails, onViewMessages)
+                        }
+                    }
                 }
             }
         }
@@ -1096,51 +1153,64 @@ private fun KanbanView(
 }
 
 @Composable
-private fun KanbanCard(job: JobRowItem, onShiftDetails: (Int) -> Unit, onViewMessages: (Int) -> Unit) {
+private fun KanbanSubItemCard(
+    card: KanbanCard,
+    onShiftDetails: (Int) -> Unit,
+    onViewMessages: (Int) -> Unit
+) {
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable { onShiftDetails(job.shift.id) },
+        modifier = Modifier.fillMaxWidth().clickable { onShiftDetails(card.parentShift.id) },
         shape = RoundedCornerShape(12.dp),
         color = Color.White,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE5E7EB))
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Title + Message
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Subitem name (primary heading) + update bubble
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    job.shift.projectName, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827), modifier = Modifier.weight(1f)
+                    text = card.subItem.subitem.ifBlank { "(Untitled subitem)" },
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF111827),
+                    modifier = Modifier.weight(1f)
                 )
-                Text("💬", fontSize = 16.sp, modifier = Modifier.clickable { onViewMessages(job.shift.id) })
-            }
-
-            // Duration From
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📅 Duration From", fontSize = 14.sp, color = Color(0xFF111827))
-                Spacer(Modifier.weight(1f))
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFF3F4F6),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE5E7EB))
-                ) {
-                    Text(
-                        job.shift.durationFromString.ifBlank { job.shift.durationFrom },
-                        fontSize = 14.sp, color = Color(0xFF6B7280),
-                        modifier = Modifier.padding(8.dp)
-                    )
+                if (card.hasUpdates) {
+                    Surface(
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = Color(0xFFEF4444),
+                        modifier = Modifier.size(10.dp)
+                    ) {}
+                    Spacer(Modifier.width(6.dp))
                 }
+                Text("💬", fontSize = 16.sp, modifier = Modifier.clickable { onViewMessages(card.parentShift.id) })
             }
 
-            // Sub Items count
+            // Project name (secondary)
+            Text(
+                text = card.projectName.ifBlank { "—" },
+                fontSize = 13.sp,
+                color = Color(0xFF6B7280)
+            )
+
+            // Date / Time + status chip
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Sub Items", fontSize = 14.sp)
-                Spacer(Modifier.weight(1f))
+                Text(
+                    text = card.displayDateTime.ifBlank { "No date" },
+                    fontSize = 12.sp,
+                    color = Color(0xFF6B7280),
+                    modifier = Modifier.weight(1f)
+                )
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE5E7EB))
+                    color = Color(card.statusColor).copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(card.statusColor))
                 ) {
                     Text(
-                        "${job.subItems.size}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        color = TextPrimary, modifier = Modifier.padding(6.dp)
+                        text = card.statusText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(card.statusColor),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
             }
@@ -1187,19 +1257,22 @@ private fun EditDialogs(state: MainLeadsJobsUiState, viewModel: MainLeadsJobsVie
             )
         }
         EditDialogType.ContractTypePicker -> {
-            StatusPickerDialog("Contract Type", MainLeadsJobsViewModel.contractTypeOptions, viewModel::selectContractType, viewModel::dismissEditDialog)
+            StatusPickerDialog("Contract Type", viewModel.dynamicContractTypeOptions(), viewModel::selectContractType, viewModel::dismissEditDialog)
         }
         EditDialogType.InvoiceStatusPicker -> {
-            StatusPickerDialog("Invoice Status", MainLeadsJobsViewModel.invoiceStatusOptions, viewModel::selectInvoiceStatus, viewModel::dismissEditDialog)
+            StatusPickerDialog("Invoice Status", viewModel.dynamicInvoiceStatusOptions(), viewModel::selectInvoiceStatus, viewModel::dismissEditDialog)
         }
         EditDialogType.HSFormStatusPicker -> {
-            StatusPickerDialog("H&S Form Status", MainLeadsJobsViewModel.hsFormOptions, viewModel::selectHSFormStatus, viewModel::dismissEditDialog)
+            StatusPickerDialog("H&S Form Status", viewModel.dynamicHsFormOptions(), viewModel::selectHSFormStatus, viewModel::dismissEditDialog)
         }
         EditDialogType.SubItemHSPicker -> {
-            StatusPickerDialog("H&S Status", MainLeadsJobsViewModel.hsFormOptions, viewModel::selectSubItemHSStatus, viewModel::dismissEditDialog)
+            StatusPickerDialog("H&S Status", viewModel.dynamicHsFormOptions(), viewModel::selectSubItemHSStatus, viewModel::dismissEditDialog)
         }
         EditDialogType.SubItemStatusPicker -> {
-            StatusPickerDialog("Sub-Item Status", MainLeadsJobsViewModel.subItemStatusOptions, viewModel::selectSubItemStatus, viewModel::dismissEditDialog)
+            StatusPickerDialog("Sub-Item Status", viewModel.dynamicSubItemStatusOptions(), viewModel::selectSubItemStatus, viewModel::dismissEditDialog)
+        }
+        EditDialogType.JobCategoryPicker -> {
+            StatusPickerDialog("Job Category", viewModel.dynamicJobCategoryOptions(), viewModel::selectSubItemJobCategory, viewModel::dismissEditDialog)
         }
         EditDialogType.AddressSearch -> {
             AddressSearchDialog(

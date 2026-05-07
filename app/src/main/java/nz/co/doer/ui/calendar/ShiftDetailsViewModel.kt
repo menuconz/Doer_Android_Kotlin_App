@@ -141,8 +141,30 @@ class ShiftDetailsViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
     private val preferencesManager: PreferencesManager,
     private val trackingManager: TrackingManager,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    // Cache-aware helpers — fall back to companion methods when cache is empty.
+    fun statusDisplayDynamic(statusId: Int, hasQuotations: Boolean = false): Pair<String, Long> {
+        val (fbText, fbColor) = getStatusDisplay(statusId, hasQuotations)
+        val text = boardConfigCache.displayName("ShiftStatus", statusId) { fbText }
+        val color = boardConfigCache.color("ShiftStatus", statusId) { fbColor }
+        return text to color
+    }
+
+    fun hsFormDisplayDynamic(hsForms: Int?): Pair<String, Long>? {
+        val fb = getHsFormDisplay(hsForms) ?: return null
+        val text = boardConfigCache.displayName("HSRequired", hsForms ?: -1) { fb.first }
+        val color = boardConfigCache.color("HSRequired", hsForms ?: -1) { fb.second }
+        return text to color
+    }
+
+    fun contractTypeTextDynamic(contractType: Int?): String =
+        boardConfigCache.displayName("ContractType", contractType ?: -1) { getContractTypeText(contractType) }
+
+    fun invoiceStatusTextDynamic(invoiceStatus: Int?): String =
+        boardConfigCache.displayName("InvoiceStatus", invoiceStatus ?: -1) { getInvoiceStatusText(invoiceStatus) }
 
     private val _uiState = MutableStateFlow(ShiftDetailsUiState())
     val uiState: StateFlow<ShiftDetailsUiState> = _uiState.asStateFlow()
@@ -213,16 +235,16 @@ class ShiftDetailsViewModel @Inject constructor(
                     val statusId = shift.statusId
 
                     // --- Status message & color (matches MAUI DayDetailViewModel colors) ---
-                    val (statusMsg, statusClr) = getStatusDisplay(statusId, shift.hasQuotations)
+                    val (statusMsg, statusClr) = statusDisplayDynamic(statusId, shift.hasQuotations)
 
                     // --- H&S Form status (null when hsForms is null, matching MAUI) ---
-                    val hsDisplay = getHsFormDisplay(shift.hsForms)
+                    val hsDisplay = hsFormDisplayDynamic(shift.hsForms)
                     val hsText = hsDisplay?.first ?: ""
                     val hsClr = hsDisplay?.second ?: 0xFFC4C4C4
 
                     // --- Contract type & invoice status ---
-                    val contractText = getContractTypeText(shift.contractType)
-                    val invoiceText = getInvoiceStatusText(shift.invoiceStatus)
+                    val contractText = contractTypeTextDynamic(shift.contractType)
+                    val invoiceText = invoiceStatusTextDynamic(shift.invoiceStatus)
 
                     // --- Date formatting ---
                     val durationFromFmt = formatDateTime(shift.durationFrom)

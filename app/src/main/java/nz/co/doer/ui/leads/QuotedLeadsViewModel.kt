@@ -60,11 +60,31 @@ class QuotedLeadsViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
     private val accountRepository: AccountRepository,
     private val preferencesManager: PreferencesManager,
-    private val googlePlacesService: GooglePlacesService
+    private val googlePlacesService: GooglePlacesService,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(QuotedLeadsUiState())
     val uiState: StateFlow<QuotedLeadsUiState> = _uiState.asStateFlow()
+
+    fun leadStatusColor(statusId: Int): Long =
+        boardConfigCache.color("LeadStatus", statusId) { NewLeadsViewModel.getLeadStatusColor(statusId) }
+
+    fun contractTypeColorDynamic(contractType: Int?): Long =
+        boardConfigCache.color("ContractType", contractType ?: -1) { NewLeadsViewModel.getContractTypeColor(contractType) }
+
+    fun dynamicQuotedLeadStatuses(): List<Pair<Int, String>> {
+        val cached = boardConfigCache.getOptions("LeadStatus")
+        if (cached.isEmpty()) return quotedLeadStatuses
+        val allowed = quotedLeadStatuses.map { it.first }.toSet()
+        return cached.filter { it.value in allowed }.map { it.value to it.displayName }
+    }
+
+    fun dynamicContractTypes(): List<Pair<Int, String>> {
+        val cached = boardConfigCache.getOptions("ContractType")
+        return if (cached.isEmpty()) NewLeadsViewModel.contractTypes
+        else cached.map { it.value to it.displayName }
+    }
 
     private val parseFormatters = listOf(
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),

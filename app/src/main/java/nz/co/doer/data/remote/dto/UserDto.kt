@@ -36,6 +36,7 @@ data class UserDto(
     @SerialName("deviceToken") val deviceToken: String = "",
     @SerialName("resourceID") val resourceId: Int = 0,
     @SerialName("adminVerified") val adminVerified: Boolean = false,
+    @SerialName("isEmployee") val isEmployee: Boolean = false,
     @SerialName("deviceTypeId") val deviceTypeId: Int = 0,
     @SerialName("address") val address: String = "",
     @SerialName("latitude") val latitude: Double? = null,

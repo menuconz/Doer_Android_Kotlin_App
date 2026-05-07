@@ -75,4 +75,10 @@ object Routes {
     // Misc
     const val CONTACT_US = "contact_us"
     const val VIEW_EMAIL_DOCUMENT = "view_email_document"
+
+    // Board Configuration
+    const val BOARD_SETTINGS = "board_settings"
+
+    // Activity Log
+    const val ACTIVITY_LOG = "activity_log"
 }

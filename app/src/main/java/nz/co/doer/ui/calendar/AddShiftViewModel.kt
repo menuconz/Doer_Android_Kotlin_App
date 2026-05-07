@@ -58,6 +58,7 @@ class AddShiftViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
     private val preferencesManager: PreferencesManager,
     private val googlePlacesService: GooglePlacesService,
+    private val boardConfigCache: nz.co.doer.data.local.BoardConfigCache,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -66,7 +67,8 @@ class AddShiftViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AddShiftUiState())
     val uiState: StateFlow<AddShiftUiState> = _uiState.asStateFlow()
 
-    val contractTypes = listOf(
+    // Static fallback list — used when the BoardConfigCache hasn't loaded yet.
+    private val defaultContractTypes = listOf(
         ContractTypeOption(0, "Select Contract Type"),
         ContractTypeOption(1, "To Be Confirmed"),
         ContractTypeOption(2, "Full Contract"),
@@ -80,6 +82,16 @@ class AddShiftViewModel @Inject constructor(
         ContractTypeOption(10, "Other Services"),
         ContractTypeOption(11, "Meetings")
     )
+
+    // Pulls live values from the BoardConfigCache so admin-renamed labels appear here.
+    // First entry is always the placeholder "Select Contract Type" (id=0).
+    val contractTypes: List<ContractTypeOption>
+        get() {
+            val cached = boardConfigCache.getOptions("ContractType")
+            if (cached.isEmpty()) return defaultContractTypes
+            return listOf(ContractTypeOption(0, "Select Contract Type")) +
+                cached.map { ContractTypeOption(it.value, it.displayName) }
+        }
 
     val reminderOptions = listOf(
         ReminderOption("None", 0),

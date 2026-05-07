@@ -11,6 +11,7 @@ data class ShiftSubItemDto(
     @SerialName("subitem") val subitem: String = "",
     @SerialName("hsRequired") val hsRequired: Int = 0,
     @SerialName("status") val status: Int = 0,
+    @SerialName("jobCategory") val jobCategory: Int = 1, // 1 = Primary, 2 = Secondary
     @SerialName("isContractor") val isContractor: Boolean = false,
     @SerialName("dateStarted") val dateStarted: String? = null,
     @SerialName("dateCompleted") val dateCompleted: String? = null,

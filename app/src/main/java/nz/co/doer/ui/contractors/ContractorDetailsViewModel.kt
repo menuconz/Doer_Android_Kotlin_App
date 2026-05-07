@@ -27,6 +27,7 @@ data class ContractorDetailsUiState(
 @HiltViewModel
 class ContractorDetailsViewModel @Inject constructor(
     private val accountRepository: AccountRepository,
+    private val preferencesManager: nz.co.doer.data.local.PreferencesManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -98,5 +99,25 @@ class ContractorDetailsViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
+    fun isAdmin(): kotlinx.coroutines.flow.Flow<Boolean> = preferencesManager.isAdmin
+
+    // Admin-only: toggle the contractor's IsEmployee flag.
+    fun toggleEmployeeFlag(newValue: Boolean) {
+        val current = _uiState.value.contractor ?: return
+        viewModelScope.launch {
+            val adminId = preferencesManager.getUserId()
+            when (val result = accountRepository.markAsEmployee(current.id, newValue, adminId)) {
+                is ApiResult.Success -> {
+                    _uiState.value = _uiState.value.copy(contractor = result.data)
+                }
+                is ApiResult.Error -> {
+                    Timber.e("Failed to mark as employee: ${result.message}")
+                    _uiState.value = _uiState.value.copy(errorMessage = result.message ?: "Failed to update.")
+                }
+                is ApiResult.Loading -> {}
+            }
+        }
     }
 }

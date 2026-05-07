@@ -35,6 +35,7 @@ class PreferencesManager @Inject constructor(
         val IS_CUSTOMER = booleanPreferencesKey("is_customer")
         val IS_ADMIN = booleanPreferencesKey("is_admin")
         val IS_CONTRACTOR = booleanPreferencesKey("is_contractor")
+        val IS_EMPLOYEE = booleanPreferencesKey("is_employee")
     }
 
     private val dataStore = context.dataStore
@@ -54,6 +55,7 @@ class PreferencesManager @Inject constructor(
     val isCustomer: Flow<Boolean> = dataStore.data.map { it[Keys.IS_CUSTOMER] ?: false }
     val isAdmin: Flow<Boolean> = dataStore.data.map { it[Keys.IS_ADMIN] ?: false }
     val isContractor: Flow<Boolean> = dataStore.data.map { it[Keys.IS_CONTRACTOR] ?: false }
+    val isEmployee: Flow<Boolean> = dataStore.data.map { it[Keys.IS_EMPLOYEE] ?: false }
 
     // --- Synchronous getters (for interceptor etc.) ---
 
@@ -77,6 +79,7 @@ class PreferencesManager @Inject constructor(
         isCustomer: Boolean,
         isAdmin: Boolean,
         isContractor: Boolean,
+        isEmployee: Boolean = false,
         discipline: String = ""
     ) {
         dataStore.edit { prefs ->
@@ -92,8 +95,13 @@ class PreferencesManager @Inject constructor(
             prefs[Keys.IS_CUSTOMER] = isCustomer
             prefs[Keys.IS_ADMIN] = isAdmin
             prefs[Keys.IS_CONTRACTOR] = isContractor
+            prefs[Keys.IS_EMPLOYEE] = isEmployee
             prefs[Keys.DISCIPLINE] = discipline
         }
+    }
+
+    suspend fun setIsEmployee(isEmployee: Boolean) {
+        dataStore.edit { it[Keys.IS_EMPLOYEE] = isEmployee }
     }
 
     // --- Clear session (logout) ---

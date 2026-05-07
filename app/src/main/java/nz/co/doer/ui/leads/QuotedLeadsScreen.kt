@@ -119,13 +119,17 @@ fun QuotedLeadsScreen(
             EditField.Status -> {
                 QuotedStatusBottomSheet(
                     onSelect = viewModel::selectLeadStatus,
-                    onDismiss = viewModel::cancelEdit
+                    onDismiss = viewModel::cancelEdit,
+                    options = viewModel.dynamicQuotedLeadStatuses(),
+                    colorProvider = viewModel::leadStatusColor
                 )
             }
             EditField.ContractType -> {
                 ContractTypeBottomSheet(
                     onSelect = viewModel::selectContractType,
-                    onDismiss = viewModel::cancelEdit
+                    onDismiss = viewModel::cancelEdit,
+                    options = viewModel.dynamicContractTypes(),
+                    colorProvider = { viewModel.contractTypeColorDynamic(it) }
                 )
             }
             EditField.Client -> {
@@ -366,7 +370,7 @@ private fun QuotedSectionView(
                                             SolidColorCell(
                                                 text = lead.statusName,
                                                 width = ColStatus,
-                                                bgColor = Color(NewLeadsViewModel.getLeadStatusColor(lead.statusId))
+                                                bgColor = Color(viewModel.leadStatusColor(lead.statusId))
                                             ) {
                                                 onEditLead(lead, EditField.Status)
                                             }
@@ -389,7 +393,7 @@ private fun QuotedSectionView(
                                             SolidColorCell(
                                                 text = lead.contractTypeName,
                                                 width = ColContractType,
-                                                bgColor = Color(NewLeadsViewModel.getContractTypeColor(lead.contractType))
+                                                bgColor = Color(viewModel.contractTypeColorDynamic(lead.contractType))
                                             ) {
                                                 onEditLead(lead, EditField.ContractType)
                                             }
@@ -451,10 +455,12 @@ private fun QuotedSectionView(
 @Composable
 internal fun QuotedStatusBottomSheet(
     onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    options: List<Pair<Int, String>> = QuotedLeadsViewModel.quotedLeadStatuses,
+    colorProvider: (Int) -> Long = { NewLeadsViewModel.getLeadStatusColor(it) }
 ) {
     // Use the quoted leads status list (includes Quote Expired, excludes Drafted)
-    val statuses = QuotedLeadsViewModel.quotedLeadStatuses
+    val statuses = options
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -468,7 +474,7 @@ internal fun QuotedStatusBottomSheet(
             }
             Spacer(modifier = Modifier.height(10.dp))
             statuses.forEach { (id, name) ->
-                val color = Color(NewLeadsViewModel.getLeadStatusColor(id))
+                val color = Color(colorProvider(id))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

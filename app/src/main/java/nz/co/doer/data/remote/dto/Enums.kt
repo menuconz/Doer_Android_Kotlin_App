@@ -76,6 +76,22 @@ enum class SubItemStatus(val value: Int) {
     }
 }
 
+// --- JobCategory ---
+enum class JobCategory(val value: Int) {
+    Primary(1),
+    Secondary(2);
+
+    fun toDisplayString(): String = when (this) {
+        Primary -> "Primary"
+        Secondary -> "Secondary"
+    }
+
+    companion object {
+        fun fromValue(value: Int): JobCategory =
+            entries.firstOrNull { it.value == value } ?: Primary
+    }
+}
+
 // --- HSRequiredStatus ---
 enum class HSRequiredStatus(val value: Int) {
     NoHS(0),

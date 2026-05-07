@@ -9,6 +9,8 @@ import kotlinx.serialization.json.Json
 import nz.co.doer.BuildConfig
 import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.remote.api.AccountApi
+import nz.co.doer.data.remote.api.ActivityLogApi
+import nz.co.doer.data.remote.api.BoardApi
 import nz.co.doer.data.remote.api.CaregiverLevelApi
 import nz.co.doer.data.remote.api.ChatMessageApi
 import nz.co.doer.data.remote.api.ClientApi
@@ -138,4 +140,14 @@ object NetworkModule {
     @Singleton
     fun provideTimeTrackingApi(retrofit: Retrofit): TimeTrackingApi =
         retrofit.create(TimeTrackingApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideBoardApi(retrofit: Retrofit): BoardApi =
+        retrofit.create(BoardApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideActivityLogApi(retrofit: Retrofit): ActivityLogApi =
+        retrofit.create(ActivityLogApi::class.java)
 }

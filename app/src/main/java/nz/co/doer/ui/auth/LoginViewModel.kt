@@ -123,8 +123,19 @@ class LoginViewModel @Inject constructor(
                             isCaregiver = isCaregiver,
                             isCustomer = isCustomer,
                             isAdmin = isAdmin,
-                            isContractor = isCaregiver
+                            isContractor = isCaregiver,
+                            isEmployee = user.isEmployee
                         )
+
+                        // Login response from the deployed API doesn't always carry IsEmployee
+                        // correctly; GetUserById does. Refetch and overwrite once the token
+                        // is in prefs so the auth interceptor can attach the bearer.
+                        if (isCaregiver) {
+                            when (val r = accountRepository.getUser(user.id)) {
+                                is ApiResult.Success -> preferencesManager.setIsEmployee(r.data.isEmployee)
+                                else -> {}
+                            }
+                        }
 
                         secureStorageManager.isLoggedIn = true
 

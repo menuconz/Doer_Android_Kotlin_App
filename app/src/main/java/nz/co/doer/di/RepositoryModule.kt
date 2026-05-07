@@ -6,6 +6,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import nz.co.doer.data.local.PreferencesManager
 import nz.co.doer.data.remote.api.AccountApi
+import nz.co.doer.data.remote.api.ActivityLogApi
+import nz.co.doer.data.remote.api.BoardApi
 import nz.co.doer.data.remote.api.CaregiverLevelApi
 import nz.co.doer.data.remote.api.ChatMessageApi
 import nz.co.doer.data.remote.api.ClientApi
@@ -18,6 +20,8 @@ import nz.co.doer.data.remote.api.ShiftApi
 import nz.co.doer.data.remote.api.TimeTrackingApi
 import kotlinx.serialization.json.Json
 import nz.co.doer.data.repository.AccountRepository
+import nz.co.doer.data.repository.ActivityLogRepository
+import nz.co.doer.data.repository.BoardRepository
 import nz.co.doer.data.repository.CaregiverLevelRepository
 import nz.co.doer.data.repository.ChatMessageRepository
 import nz.co.doer.data.repository.ClientRepository
@@ -110,4 +114,16 @@ object RepositoryModule {
         timeTrackingApi: TimeTrackingApi,
         preferencesManager: PreferencesManager
     ): TimeTrackingRepository = TimeTrackingRepository(timeTrackingApi, preferencesManager)
+
+    @Provides
+    @Singleton
+    fun provideBoardRepository(
+        boardApi: BoardApi
+    ): BoardRepository = BoardRepository(boardApi)
+
+    @Provides
+    @Singleton
+    fun provideActivityLogRepository(
+        activityLogApi: ActivityLogApi
+    ): ActivityLogRepository = ActivityLogRepository(activityLogApi)
 }

@@ -96,6 +96,14 @@ interface AccountApi {
         @Query("id") userId: String
     ): Boolean
 
+    // Admin-only: toggle the IsEmployee flag on a contractor.
+    @POST("User/MarkAsEmployee")
+    suspend fun markAsEmployee(
+        @Query("userId") userId: String,
+        @Query("isEmployee") isEmployee: Boolean,
+        @Query("adminId") adminId: String
+    ): UserDto
+
     // --- User Search ---
 
     @GET("User/GetCaregiverUsers")

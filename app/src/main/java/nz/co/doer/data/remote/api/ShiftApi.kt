@@ -75,6 +75,14 @@ interface ShiftApi {
         @Query("take") take: Int = 100
     ): List<ShiftDto>
 
+    // Date-based Kanban: returns jobs whose subitems (or shift itself) fall in [startDate, endDate]
+    @GET("Shift/GetJobsByDateRange")
+    suspend fun getJobsByDateRange(
+        @Query("userId") userId: String,
+        @Query("startDate") startDate: String,
+        @Query("endDate") endDate: String
+    ): List<ShiftDto>
+
     @GET("Shift/GetMonthlyJobsByCaregiverId")
     suspend fun getMonthlyJobsByCaregiverId(
         @Query("caregiverId") caregiverId: String,
